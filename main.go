@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/axiomhq/axiom-go/axiom"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,14 @@ func main() {
 	if port == "" {
 		port = "8080"
 		slog.Info("using default port", "port", port)
+	}
+
+	client, err := axiom.NewClient(
+		axiom.SetPersonalTokenConfig("AXIOM_TOKEN", "AXIOM_ORG_ID"),
+	)
+	if err != nil {
+		slog.Error("failed to create axiom client: %s", err)
+		os.Exit(1)
 	}
 
 	l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
