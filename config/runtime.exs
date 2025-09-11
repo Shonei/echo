@@ -50,6 +50,7 @@ if config_env() == :prod do
   config :echo, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :echo, EchoWeb.Endpoint,
+    server: true,
     url: [host: host, port: 443, scheme: "https"],
     http: [
       # Enable IPv6 and bind on all interfaces.
