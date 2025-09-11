@@ -1,0 +1,106 @@
+<div class="max-w-7xl mx-auto">
+  <div class="mb-8">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Request Details</h1>
+        <p class="mt-2 text-gray-600">Detailed view of request #<%= @request.id %></p>
+      </div>
+      <div>
+        <a href={~p"/ui/request"} class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+          ← Back to Requests
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request Overview -->
+  <div class="bg-white shadow rounded-lg p-6 mb-6">
+    <h2 class="text-lg font-medium text-gray-900 mb-4">Request Overview</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div>
+        <dt class="text-sm font-medium text-gray-500">Method</dt>
+        <dd class="mt-1">
+          <span class={"inline-flex px-2 py-1 text-xs font-semibold rounded-full #{method_badge_class(@request.method)}"}>
+            <%= @request.method %>
+          </span>
+        </dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-gray-500">URL Path</dt>
+        <dd class="mt-1 text-sm text-gray-900 font-mono"><%= @request.url_path %></dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-gray-500">Content Type</dt>
+        <dd class="mt-1 text-sm text-gray-900"><%= @request.content_type %></dd>
+      </div>
+      <div>
+        <dt class="text-sm font-medium text-gray-500">Timestamp</dt>
+        <dd class="mt-1 text-sm text-gray-900"><%= format_timestamp(@request.inserted_at) %></dd>
+      </div>
+    </div>
+  </div>
+
+  <!-- URL Query Parameters -->
+  <%= if @request.url_query != "" do %>
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Query Parameters</h2>
+      <div class="bg-gray-50 rounded-md p-4">
+        <pre class="text-sm text-gray-900 whitespace-pre-wrap"><%= format_json(@request.url_query) %></pre>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Headers -->
+  <%= if @request.headers != "" do %>
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Headers</h2>
+      <div class="bg-gray-50 rounded-md p-4">
+        <pre class="text-sm text-gray-900 whitespace-pre-wrap"><%= format_json(@request.headers) %></pre>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Request Body -->
+  <%= if @request.body != "" do %>
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Request Body</h2>
+      <div class="bg-gray-50 rounded-md p-4">
+        <pre class="text-sm text-gray-900 whitespace-pre-wrap"><%= format_json(@request.body) %></pre>
+      </div>
+    </div>
+  <% else %>
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+      <h2 class="text-lg font-medium text-gray-900 mb-4">Request Body</h2>
+      <div class="bg-gray-50 rounded-md p-4">
+        <p class="text-sm text-gray-500 italic">No request body</p>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Raw Data Section -->
+  <div class="bg-white shadow rounded-lg p-6">
+    <h2 class="text-lg font-medium text-gray-900 mb-4">Raw Data</h2>
+    <div class="space-y-4">
+      <div>
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Request ID</h3>
+        <div class="bg-gray-50 rounded-md p-3">
+          <code class="text-sm text-gray-900"><%= @request.id %></code>
+        </div>
+      </div>
+      
+      <div>
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Created At</h3>
+        <div class="bg-gray-50 rounded-md p-3">
+          <code class="text-sm text-gray-900"><%= @request.inserted_at %></code>
+        </div>
+      </div>
+      
+      <div>
+        <h3 class="text-sm font-medium text-gray-700 mb-2">Updated At</h3>
+        <div class="bg-gray-50 rounded-md p-3">
+          <code class="text-sm text-gray-900"><%= @request.updated_at %></code>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

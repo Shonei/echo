@@ -14,26 +14,26 @@ defmodule EchoWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :echo do
+    # Accept any content type - bypass format checking
+    plug EchoWeb.Plugs.AcceptAny
+  end
+
   scope "/", EchoWeb do
     pipe_through :browser
 
     get "/", PageController, :home
   end
 
-#  scope "/echo", EchoWeb do
-#    pipe_through :browser
-#
-#    get "/", PageController, :home
-#  end
+  scope "/ui", EchoWeb do
+    pipe_through :browser
 
-  # Other scopes may use custom stacks.
-#   scope "/api", EchoWeb do
-#     pipe_through :api
-#     resources "/urls", UrlController, except: [:new, :edit]
-#   end
+    get "/request", UIController, :requests
+    get "/request/:id", UIController, :request_detail
+  end
 
    scope "/echo", EchoWeb do
-     pipe_through :api
+     pipe_through :echo
      forward "/", RequestController, :any
    end
 

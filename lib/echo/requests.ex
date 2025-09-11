@@ -21,6 +21,10 @@ defmodule Echo.Requests do
     Repo.all(Request)
   end
 
+  def count_requests do
+    Repo.aggregate(Request, :count, :id)
+  end
+
   @doc """
   Gets a single request.
 
