@@ -12,3 +12,10 @@ config :logger, level: :info
 
 # Enable dev routes for dashboard and mailbox
 config :echo, dev_routes: true
+
+config :echo, EchoWeb.Endpoint,
+       # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
+       http: [ip: {0, 0, 0, 0}, port: 4000],
+       check_origin: false,
+       code_reloader: false,
+       debug_errors: true

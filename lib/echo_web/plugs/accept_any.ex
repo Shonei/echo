@@ -4,7 +4,6 @@ defmodule EchoWeb.Plugs.AcceptAny do
   This bypasses Phoenix's content negotiation for the echo endpoints.
   """
 
-  import Plug.Conn
   import Phoenix.Controller, only: [put_format: 2]
 
   def init(opts), do: opts
