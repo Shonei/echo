@@ -21,8 +21,10 @@ defmodule Echo.Requests do
     Repo.all(Request)
   end
 
-  def count_requests do
-    Repo.aggregate(Request, :count, :id)
+  def count_requests(filters \\ %{}) do
+    Request
+    |> build_search_query(filters)
+    |> Repo.aggregate(:count)
   end
 
   @doc """
@@ -124,6 +126,7 @@ defmodule Echo.Requests do
   def search_requests(filters \\ %{}) do
     Request
     |> build_search_query(filters)
+    |> order_by(desc: :id)
     |> Repo.all()
   end
 
@@ -131,6 +134,9 @@ defmodule Echo.Requests do
     Enum.reduce(filters, query, fn
       {:url_path, path}, query when is_binary(path) ->
         from r in query, where: r.url_path == ^path
+
+      {:per_page, per_page}, query when is_integer(per_page) ->
+        from r in query, limit: ^per_page
 
       {:url_path_like, path_pattern}, query when is_binary(path_pattern) ->
         from r in query, where: like(r.url_path, ^path_pattern)

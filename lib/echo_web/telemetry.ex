@@ -1,5 +1,6 @@
 defmodule EchoWeb.Telemetry do
   use Supervisor
+  require Logger
   import Telemetry.Metrics
 
   def start_link(arg) do
@@ -9,14 +10,31 @@ defmodule EchoWeb.Telemetry do
   @impl true
   def init(_arg) do
     children = [
-      # Telemetry poller will execute the given period measurements
-      # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
       {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
       # Add reporters as children of your supervision tree.
       # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
     ]
 
+    :ok =
+      :telemetry.attach(
+        "echo-handler",
+        [:echo, :repo, :query],
+        &handle_event/4,
+        %{}
+      )
+
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def handle_event([:echo, :repo, :query], measurements, metadata, config) do
+    total_time = measurements.total_time
+    ms_total_time = System.convert_time_unit(total_time, :native, :millisecond)
+
+    if ms_total_time > 1_000 do
+      query = metadata.query
+
+      Logger.info("Total time: #{ms_total_time} milliseconds for query: #{query}")
+    end
   end
 
   def metrics do
@@ -89,5 +107,55 @@ defmodule EchoWeb.Telemetry do
       # This function must call :telemetry.execute/3 and a metric must be added above.
       # {EchoWeb, :count_users, []}
     ]
+  end
+end
+
+# Saved my life here https://stratus3d.com/blog/2023/10/15/show-all-telemetry-events-in-erlang-and-elixir/?utm_source=elixir-merge
+defmodule TelemetryHelper do
+  @moduledoc """
+  Helper functions for seeing all telemetry events.
+  Only for use in development.
+  """
+
+  @doc """
+  attach_all/0 prints out all telemetry events received by default.
+  Optionally, you can specify a handler function that will be invoked
+  with the same three arguments that the `:telemetry.execute/3` and
+  `:telemetry.span/3` functions were invoked with.
+  """
+  def attach_all(function \\ &default_handler_fn/3) do
+    # Start the tracer
+    :dbg.start()
+
+    # Create tracer process with a function that pattern matches out the three arguments the telemetry calls are made with.
+    :dbg.tracer(
+      :process,
+      {fn
+         {_, _, _, {_mod, :execute, [name, measurement, metadata]}}, _state ->
+           function.(name, metadata, measurement)
+
+         {_, _, _, {_mod, :span, [name, metadata, span_fun]}}, _state ->
+           function.(name, metadata, span_fun)
+       end, nil}
+    )
+
+    # Trace all processes
+    :dbg.p(:all, :c)
+
+    # Trace calls to the functions used to emit telemetry events
+    :dbg.tp(:telemetry, :execute, 3, [])
+    :dbg.tp(:telemetry, :span, 3, [])
+  end
+
+  def stop do
+    # Stop tracer
+    :dbg.stop()
+  end
+
+  defp default_handler_fn(name, metadata, measure_or_fun) do
+    # Print out telemetry info
+    IO.puts(
+      "Telemetry event:#{inspect(name)}\nwith #{inspect(measure_or_fun)} and #{inspect(metadata)}"
+    )
   end
 end

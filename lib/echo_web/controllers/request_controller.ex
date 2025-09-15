@@ -6,41 +6,6 @@ defmodule EchoWeb.RequestController do
 
   action_fallback EchoWeb.FallbackController
 
-#  def index(conn, _params) do
-#    requests = Requests.list_requests()
-#    render(conn, :index, requests: requests)
-#  end
-#
-#  def create(conn, %{"request" => request_params}) do
-#    with {:ok, %Request{} = request} <- Requests.create_request(request_params) do
-#      conn
-#      |> put_status(:created)
-#      |> put_resp_header("location", ~p"/api/requests/#{request}")
-#      |> render(:show, request: request)
-#    end
-#  end
-#
-#  def show(conn, %{"id" => id}) do
-#    request = Requests.get_request!(id)
-#    render(conn, :show, request: request)
-#  end
-#
-#  def update(conn, %{"id" => id, "request" => request_params}) do
-#    request = Requests.get_request!(id)
-#
-#    with {:ok, %Request{} = request} <- Requests.update_request(request, request_params) do
-#      render(conn, :show, request: request)
-#    end
-#  end
-#
-#  def delete(conn, %{"id" => id}) do
-#    request = Requests.get_request!(id)
-#
-#    with {:ok, %Request{}} <- Requests.delete_request(request) do
-#      send_resp(conn, :no_content, "")
-#    end
-#  end
-
   def any(conn, _params) do
     # Extract request data from the connection
     request_data = %{
@@ -79,24 +44,30 @@ defmodule EchoWeb.RequestController do
       %Plug.Conn.Unfetched{} ->
         # Body hasn't been read yet, read it from assigns or return empty
         Map.get(conn.assigns, :raw_body, "")
+
       body_params when is_map(body_params) ->
         # Convert body params to JSON string
         Jason.encode!(body_params)
+
       _ ->
         ""
     end
   end
 
+  # create a json like this %{:header, [values]}
   defp serialize_headers(headers) do
     headers
-    |> Enum.map(fn {key, value} -> %{key: key, value: value} end)
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      Map.update(acc, key, [value], fn existing -> existing ++ [value] end)
+    end)
     |> Jason.encode!()
   end
 
   defp serialize_query_string(""), do: ""
+
   defp serialize_query_string(query_string) do
     query_string
     |> URI.decode_query()
     |> Jason.encode!()
-    end
+  end
 end

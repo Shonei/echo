@@ -7,35 +7,24 @@ defmodule EchoWeb.UIController do
     # Get pagination parameters
     page = Map.get(params, "page", "1") |> String.to_integer()
     per_page = 20
-    offset = (page - 1) * per_page
 
     # Get filter parameters
     filters = build_filters(params)
 
-    # Get requests with pagination
-    requests = 
-      if Enum.empty?(filters) do
-        Requests.list_requests()
-      else
-        Requests.search_requests(filters)
-      end
-      |> Enum.sort_by(& &1.inserted_at, :desc)
-      |> Enum.drop(offset)
-      |> Enum.take(per_page)
+    # Get requests with pagination and limit
+    requests =
+      Requests.search_requests(Map.put(filters, :per_page, per_page))
 
     # Get total count for pagination
-    total_count = 
-      if Enum.empty?(filters) do
-        Requests.count_requests()
-      else
-        Requests.search_requests(filters) |> length()
-      end
+    total_count =
+      Requests.count_requests(filters)
 
     total_pages = ceil(total_count / per_page)
+    IO.puts("TOTAL COUNT: #{total_count}")
 
-    render(conn, :requests, 
-      requests: requests, 
-      current_page: page, 
+    render(conn, :requests,
+      requests: requests,
+      current_page: page,
       total_pages: total_pages,
       filters: params
     )
@@ -49,23 +38,25 @@ defmodule EchoWeb.UIController do
   defp build_filters(params) do
     filters = %{}
 
-    filters = 
+    filters =
       case Map.get(params, "method") do
         method when method != nil and method != "" -> Map.put(filters, :method, method)
         _ -> filters
       end
 
-    filters = 
+    filters =
       case Map.get(params, "url_path") do
         path when path != nil and path != "" -> Map.put(filters, :url_path_like, "%#{path}%")
         _ -> filters
       end
 
-    filters = 
+    filters =
       case Map.get(params, "content_type") do
-        content_type when content_type != nil and content_type != "" -> 
+        content_type when content_type != nil and content_type != "" ->
           Map.put(filters, :content_type, content_type)
-        _ -> filters
+
+        _ ->
+          filters
       end
 
     filters
