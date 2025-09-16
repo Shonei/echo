@@ -20,6 +20,9 @@ if System.get_env("PHX_SERVER") do
   config :echo, EchoWeb.Endpoint, server: true
 end
 
+config :logger, :default_handler,
+  formatter: LoggerJSON.Formatters.Basic.new(metadata: [:request_id, :mfa, :file, :line])
+
 if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||

@@ -1,6 +1,6 @@
 defmodule EchoWeb.Telemetry do
   use Supervisor
-  require Logger
+  alias Echo.Logger
   import Telemetry.Metrics
 
   def start_link(arg) do
@@ -26,14 +26,14 @@ defmodule EchoWeb.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def handle_event([:echo, :repo, :query], measurements, metadata, config) do
+  def handle_event([:echo, :repo, :query], measurements, metadata, _config) do
     total_time = measurements.total_time
     ms_total_time = System.convert_time_unit(total_time, :native, :millisecond)
 
     if ms_total_time > 1_000 do
       query = metadata.query
 
-      Logger.info("Total time: #{ms_total_time} milliseconds for query: #{query}")
+      Logger.info("SLOW QUERY", %{query: query, times: measurements})
     end
   end
 

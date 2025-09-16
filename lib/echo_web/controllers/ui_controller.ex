@@ -1,5 +1,6 @@
 defmodule EchoWeb.UIController do
   use EchoWeb, :controller
+  alias Echo.Logger
 
   alias Echo.Requests
 
@@ -20,7 +21,6 @@ defmodule EchoWeb.UIController do
       Requests.count_requests(filters)
 
     total_pages = ceil(total_count / per_page)
-    IO.puts("TOTAL COUNT: #{total_count}")
 
     render(conn, :requests,
       requests: requests,
