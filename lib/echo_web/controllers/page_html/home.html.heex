@@ -11,14 +11,24 @@
     <!-- APP Section -->
     <div class="mb-16">
       <h2 class="text-3xl font-semibold text-gray-800 mb-8 text-center">APP</h2>
-      <div class="flex justify-center">
-        <a href="/echo/request" class="group block max-w-sm w-full">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <a href="/echo/request" class="group block">
           <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 text-center">
             <div class="mb-6">
               <.icon name="hero-signal" class="h-16 w-16 mx-auto text-blue-500" />
             </div>
             <h3 class="text-xl font-semibold text-gray-900 mb-2">Echo UI</h3>
             <p class="text-gray-600">View and manage request history</p>
+          </div>
+        </a>
+
+        <a href="/chat" class="group block">
+          <div class="bg-white rounded-xl shadow-lg hover:shadow-xl transition-shadow duration-300 p-8 text-center">
+            <div class="mb-6">
+              <.icon name="hero-chat-bubble-left-right" class="h-16 w-16 mx-auto text-purple-500" />
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">Real-time Chat</h3>
+            <p class="text-gray-600">Join chat rooms and talk with others</p>
           </div>
         </a>
       </div>

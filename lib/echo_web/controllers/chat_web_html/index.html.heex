@@ -1,0 +1,41 @@
+<.header>
+  Real-time Chat
+  <:subtitle>Choose a room to start chatting</:subtitle>
+</.header>
+
+<div class="max-w-4xl mx-auto">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">General</h3>
+      <p class="text-gray-600 mb-4">General discussion and casual conversation</p>
+      <.link
+        navigate={~p"/chat/general"}
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+      >
+        Join Room
+      </.link>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Tech</h3>
+      <p class="text-gray-600 mb-4">Technology discussions and programming help</p>
+      <.link
+        navigate={~p"/chat/tech"}
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+      >
+        Join Room
+      </.link>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+      <h3 class="text-xl font-semibold text-gray-900 mb-2">Random</h3>
+      <p class="text-gray-600 mb-4">Random topics and off-topic discussions</p>
+      <.link
+        navigate={~p"/chat/random"}
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
+      >
+        Join Room
+      </.link>
+    </div>
+  </div>
+</div>

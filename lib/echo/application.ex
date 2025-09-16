@@ -11,10 +11,10 @@ defmodule Echo.Application do
       EchoWeb.Telemetry,
       Echo.Repo,
       {Ecto.Migrator,
-        repos: Application.fetch_env!(:echo, :ecto_repos),
-        skip: skip_migrations?()},
+       repos: Application.fetch_env!(:echo, :ecto_repos), skip: skip_migrations?()},
       {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Echo.PubSub},
+      Echo.RequestCache,
       # Start a worker by calling: Echo.Worker.start_link(arg)
       # {Echo.Worker, arg},
       # Start to serve requests, typically the last entry

@@ -23,6 +23,8 @@ defmodule EchoWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/chat", ChatWebController, :index
+    get "/chat/:room", ChatWebController, :room
   end
 
   scope "/echo", EchoWeb do
@@ -30,6 +32,14 @@ defmodule EchoWeb.Router do
 
     get "/request", UIController, :requests
     get "/request/:id", UIController, :request_detail
+  end
+
+  scope "/api/v1", EchoWeb do
+    pipe_through :api
+
+    get "/chat/rooms", ChatController, :index
+    get "/chat/:room/messages", ChatController, :messages
+    post "/chat/:room/messages", ChatController, :create_message
   end
 
   scope "/api/v1", EchoWeb do
