@@ -9,13 +9,13 @@ defmodule EchoWeb.ChatChannel do
     if authorized?(payload) do
       # Subscribe to the room's PubSub topic
       PubSub.subscribe(Echo.PubSub, "chat:#{room}")
-      
+
       # Get recent messages for the room
       messages = Chat.list_messages(room, 50)
-      
+
       # Assign room to socket
       socket = assign(socket, :room, room)
-      
+
       # Send recent messages to the newly joined user
       {:ok, %{messages: format_messages(messages)}, socket}
     else
@@ -26,24 +26,24 @@ defmodule EchoWeb.ChatChannel do
   # Channels can be used in a request/response fashion
   # by sending replies to requests from the client
   @impl true
-  def handle_in("new_message", %{"content" => content}, socket) do
+  def handle_in("new_message", %{"content" => content} = payload, socket) do
     room = socket.assigns.room
     user_id = socket.assigns.user_id
-    
-    # Extract username from user_id (for anonymous users) or use a default
-    username = extract_username(user_id)
-    
+
+    # Use username from payload if provided, otherwise extract from user_id
+    username = Map.get(payload, "username") || extract_username(user_id)
+
     case Chat.create_message(%{
-      content: content,
-      room: room,
-      user_id: user_id,
-      username: username
-    }) do
+           content: content,
+           room: room,
+           user_id: user_id,
+           username: username
+         }) do
       {:ok, message} ->
         # Broadcast the message to all subscribers
         Chat.broadcast_message(room, message)
         {:reply, {:ok, %{message: format_message(message)}}, socket}
-      
+
       {:error, changeset} ->
         {:reply, {:error, %{errors: format_errors(changeset)}}, socket}
     end

@@ -14,36 +14,38 @@ defmodule EchoWeb.ChatController do
   def messages(conn, %{"room" => room} = params) do
     limit = Map.get(params, "limit", "50") |> String.to_integer()
     messages = Chat.list_messages(room, limit)
-    
-    formatted_messages = Enum.map(messages, fn message ->
-      %{
-        id: message.id,
-        content: message.content,
-        username: message.username,
-        user_id: message.user_id,
-        inserted_at: message.inserted_at
-      }
-    end)
-    
+
+    formatted_messages =
+      Enum.map(messages, fn message ->
+        %{
+          id: message.id,
+          content: message.content,
+          username: message.username,
+          user_id: message.user_id,
+          inserted_at: message.inserted_at
+        }
+      end)
+
     json(conn, %{messages: formatted_messages})
   end
 
   def create_message(conn, %{"room" => room, "message" => message_params}) do
     # For API calls, we'll use a simple user identification
-    user_id = get_session(conn, :user_id) || "api_user_#{:rand.uniform(1000000)}"
+    user_id = get_session(conn, :user_id) || "api_user_#{:rand.uniform(1_000_000)}"
     username = message_params["username"] || "API User"
-    
-    attrs = Map.merge(message_params, %{
-      "room" => room,
-      "user_id" => user_id,
-      "username" => username
-    })
-    
+
+    attrs =
+      Map.merge(message_params, %{
+        "room" => room,
+        "user_id" => user_id,
+        "username" => username
+      })
+
     case Chat.create_message(attrs) do
       {:ok, message} ->
         # Broadcast the message to WebSocket subscribers
         Chat.broadcast_message(room, message)
-        
+
         formatted_message = %{
           id: message.id,
           content: message.content,
@@ -51,11 +53,11 @@ defmodule EchoWeb.ChatController do
           user_id: message.user_id,
           inserted_at: message.inserted_at
         }
-        
+
         conn
         |> put_status(:created)
         |> json(%{message: formatted_message})
-      
+
       {:error, changeset} ->
         conn
         |> put_status(:unprocessable_entity)
