@@ -32,9 +32,16 @@ defmodule EchoWeb.Router do
     get "/request/:id", UIController, :request_detail
   end
 
+  scope "/api/v1", EchoWeb do
+    scope "/echo" do
+      pipe_through :echo
+      match :*, "/*path", RequestController, :any
+    end
+  end
+
   scope "/echo", EchoWeb do
     pipe_through :echo
-    forward "/", RequestController, :any
+    match :*, "/*path", RequestController, :any
   end
 
   # Enable LiveDashboard in development

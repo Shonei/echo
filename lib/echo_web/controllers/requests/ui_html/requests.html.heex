@@ -92,7 +92,7 @@
                   <%= format_timestamp(request.inserted_at) %>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <a href={~p"/ui/request/#{request.id}"} class="text-indigo-600 hover:text-indigo-900">
+                  <a href={~p"/echo/request/#{request.id}"} class="text-indigo-600 hover:text-indigo-900">
                     View Details
                   </a>
                 </td>
@@ -109,13 +109,13 @@
     <div class="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 mt-6 rounded-lg shadow">
       <div class="flex-1 flex justify-between sm:hidden">
         <%= if @current_page > 1 do %>
-          <a href={~p"/ui/request?#{Map.put(@filters, "page", @current_page - 1)}"} 
+          <a href={~p"/echo/request?#{Map.put(@filters, "page", @current_page - 1)}"} 
              class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             Previous
           </a>
         <% end %>
         <%= if @current_page < @total_pages do %>
-          <a href={~p"/ui/request?#{Map.put(@filters, "page", @current_page + 1)}"} 
+          <a href={~p"/echo/request?#{Map.put(@filters, "page", @current_page + 1)}"} 
              class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
             Next
           </a>
@@ -130,13 +130,13 @@
         <div>
           <nav class="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
             <%= if @current_page > 1 do %>
-              <a href={~p"/ui/request?#{Map.put(@filters, "page", @current_page - 1)}"} 
+              <a href={~p"/echo/request?#{Map.put(@filters, "page", @current_page - 1)}"} 
                  class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
                 Previous
               </a>
             <% end %>
             <%= if @current_page < @total_pages do %>
-              <a href={~p"/ui/request?#{Map.put(@filters, "page", @current_page + 1)}"} 
+              <a href={~p"/echo/request?#{Map.put(@filters, "page", @current_page + 1)}"} 
                  class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
                 Next
               </a>
