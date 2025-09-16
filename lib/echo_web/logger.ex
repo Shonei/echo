@@ -10,7 +10,7 @@ defmodule Echo.Logger do
   end
 
   def warn(message, labels \\ %{}) do
-    Logger.warn(%{msg: message, labels: labels})
+    Logger.warning(%{msg: message, labels: labels})
   end
 
   def debug(message, labels \\ %{}) do

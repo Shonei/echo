@@ -1,6 +1,5 @@
 defmodule EchoWeb.UIController do
   use EchoWeb, :controller
-  alias Echo.Logger
 
   alias Echo.Requests
 

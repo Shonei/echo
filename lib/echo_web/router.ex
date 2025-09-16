@@ -25,17 +25,17 @@ defmodule EchoWeb.Router do
     get "/", PageController, :home
   end
 
-  scope "/ui", EchoWeb do
+  scope "/echo", EchoWeb do
     pipe_through :browser
 
     get "/request", UIController, :requests
     get "/request/:id", UIController, :request_detail
   end
 
-   scope "/echo", EchoWeb do
-     pipe_through :echo
-     forward "/", RequestController, :any
-   end
+  scope "/echo", EchoWeb do
+    pipe_through :echo
+    forward "/", RequestController, :any
+  end
 
   # Enable LiveDashboard in development
   if Application.compile_env(:echo, :dev_routes) do
@@ -49,8 +49,10 @@ defmodule EchoWeb.Router do
     scope "/dev" do
       pipe_through :browser
 
-      live_dashboard "/dashboard", metrics: EchoWeb.Telemetry, ecto_repos: [Echo.Repo],
-                                   ecto_sqlite3_extras_options: []
+      live_dashboard "/dashboard",
+        metrics: EchoWeb.Telemetry,
+        ecto_repos: [Echo.Repo],
+        ecto_sqlite3_extras_options: []
     end
   end
 end
