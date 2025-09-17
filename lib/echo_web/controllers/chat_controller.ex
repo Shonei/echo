@@ -30,8 +30,12 @@ defmodule EchoWeb.ChatController do
   end
 
   def create_message(conn, %{"room" => room, "message" => message_params}) do
-    # For API calls, we'll use a simple user identification
-    user_id = get_session(conn, :user_id) || "api_user_#{:rand.uniform(1_000_000)}"
+    # Read user_id from message params, fallback to session, then generate random ID
+    user_id =
+      message_params["user_id"] ||
+        get_session(conn, :user_id) ||
+        "api_user_#{:rand.uniform(1_000_000)}"
+
     username = message_params["username"] || "API User"
 
     attrs =

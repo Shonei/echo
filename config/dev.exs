@@ -7,6 +7,8 @@ config :echo, Echo.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 
+config :logger, level: :info
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

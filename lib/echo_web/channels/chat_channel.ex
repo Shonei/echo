@@ -41,7 +41,8 @@ defmodule EchoWeb.ChatChannel do
          }) do
       {:ok, message} ->
         # Broadcast the message to all subscribers
-        Chat.broadcast_message(room, message)
+        # Chat.broadcast_message(room, message)
+        broadcast!(socket, "new_message", %{message: format_message(message)})
         {:reply, {:ok, %{message: format_message(message)}}, socket}
 
       {:error, changeset} ->
@@ -58,6 +59,12 @@ defmodule EchoWeb.ChatChannel do
   # Handle broadcasted messages
   @impl true
   def handle_info({:new_message, message}, socket) do
+    push(socket, "new_message", %{message: format_message(message)})
+    {:noreply, socket}
+  end
+
+  def handle_info({:outside_message, message}, socket) do
+    IO.puts("Received outside message: #{inspect(message)}")
     push(socket, "new_message", %{message: format_message(message)})
     {:noreply, socket}
   end

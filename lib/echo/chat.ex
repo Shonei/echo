@@ -111,6 +111,6 @@ defmodule Echo.Chat do
   Broadcasts a message to all subscribers of a room.
   """
   def broadcast_message(room, message) do
-    Phoenix.PubSub.broadcast(Echo.PubSub, "chat:#{room}", {:new_message, message})
+    Phoenix.PubSub.broadcast(Echo.PubSub, "chat:#{room}", {:outside_message, message})
   end
 end
