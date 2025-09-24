@@ -8,7 +8,7 @@ defmodule EchoWeb.ChatChannel do
   def join("chat:" <> room, payload, socket) do
     if authorized?(payload) do
       # Subscribe to the room's PubSub topic
-      PubSub.subscribe(Echo.PubSub, "chat:#{room}")
+      # PubSub.subscribe(Echo.PubSub, "chat:#{room}")
 
       # Get recent messages for the room
       messages = Chat.list_messages(room, 50)
