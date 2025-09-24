@@ -25,6 +25,13 @@ defmodule EchoWeb.Router do
     get "/", PageController, :home
     get "/chat", ChatWebController, :index
     get "/chat/:room", ChatWebController, :room
+
+    # User management web interface
+    resources "/users", UserWebController do
+      get "/type/:type", UserWebController, :by_type, as: :user_by_type
+    end
+
+    get "/users/type/:type", UserWebController, :by_type
   end
 
   scope "/echo", EchoWeb do
@@ -40,6 +47,15 @@ defmodule EchoWeb.Router do
     get "/chat/rooms", ChatController, :index
     get "/chat/:room/messages", ChatController, :messages
     post "/chat/:room/messages", ChatController, :create_message
+
+    # User management API
+    resources "/users", UserController, except: [:new, :edit] do
+      get "/metadata", UserController, :metadata, as: :user_metadata
+      put "/metadata", UserController, :update_metadata, as: :user_metadata
+    end
+
+    post "/users/authenticate", UserController, :authenticate
+    get "/users/type/:type", UserController, :by_type
   end
 
   scope "/api/v1", EchoWeb do

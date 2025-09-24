@@ -1,0 +1,83 @@
+<.header>
+  Edit User
+  <:subtitle>Update user information</:subtitle>
+  <:actions>
+    <.link href={~p"/users/#{@user}"} class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+      Back to User
+    </.link>
+  </:actions>
+</.header>
+
+<div class="mt-8">
+  <.simple_form :let={f} for={@changeset} action={~p"/users/#{@user}"} method="put">
+    <.error :if={@changeset.action}>
+      Oops, something went wrong! Please check the errors below.
+    </.error>
+
+    <.input field={f[:username]} type="text" label="Username" required />
+    
+    <.input 
+      field={f[:type]} 
+      type="select" 
+      label="User Type" 
+      options={[{"Regular User", "user"}, {"AI User", "ai"}, {"Admin User", "admin"}]}
+      required 
+    />
+
+    <div class="space-y-4">
+      <label class="block text-sm font-medium text-gray-700">
+        Metadata (JSON format)
+      </label>
+      <textarea 
+        name="user[metadata]" 
+        id="user_metadata"
+        rows="6" 
+        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+        placeholder='{"key": "value", "another_key": "another_value"}'
+      ><%= if @metadata != %{}, do: Jason.encode!(@metadata, pretty: true) %></textarea>
+      <p class="text-sm text-gray-500">
+        Enter metadata as JSON. For AI users, include "model" and "system_props" fields.
+      </p>
+    </div>
+
+    <div class="bg-yellow-50 border border-yellow-200 rounded-md p-4 mt-4">
+      <h4 class="text-sm font-medium text-yellow-800 mb-2">Password Update (Optional):</h4>
+      <.input field={f[:password]} type="password" label="New Password (leave blank to keep current)" />
+    </div>
+
+    <div class="bg-red-50 border border-red-200 rounded-md p-4 mt-4">
+      <h4 class="text-sm font-medium text-red-800 mb-2">Authentication Required:</h4>
+      <.input 
+        field={f[:current_password]} 
+        type="password" 
+        label="Current Password" 
+        required 
+        placeholder="Enter your current password to confirm changes"
+      />
+      <p class="text-sm text-red-600 mt-1">
+        You must enter your current password to update user information.
+      </p>
+    </div>
+
+    <:actions>
+      <.button>Update User</.button>
+    </:actions>
+  </.simple_form>
+</div>
+
+<script>
+  // Add some basic JSON validation
+  document.getElementById('user_metadata').addEventListener('blur', function() {
+    const value = this.value.trim();
+    if (value && value !== '') {
+      try {
+        JSON.parse(value);
+        this.classList.remove('border-red-300');
+        this.classList.add('border-gray-300');
+      } catch (e) {
+        this.classList.remove('border-gray-300');
+        this.classList.add('border-red-300');
+      }
+    }
+  });
+</script>
