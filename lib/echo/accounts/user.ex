@@ -17,9 +17,11 @@ defmodule Echo.Accounts.User do
     user
     |> cast(attrs, [:username, :password, :type])
     |> validate_required([:username, :password, :type])
-    |> validate_length(:username, min: 3, max: 50)
+    |> validate_length(:username, min: 2, max: 50)
     |> validate_length(:password, min: 6, max: 100)
-    |> validate_format(:username, ~r/^[a-zA-Z0-9_]+$/, message: "can only contain letters, numbers, and underscores")
+    |> validate_format(:username, ~r/^[a-zA-Z0-9_]+$/,
+      message: "can only contain letters, numbers, and underscores"
+    )
     |> unique_constraint(:username)
     |> validate_inclusion(:type, ["user", "ai", "admin"])
     |> put_password_hash()
@@ -32,14 +34,18 @@ defmodule Echo.Accounts.User do
     |> cast(attrs, [:username, :password, :type])
     |> validate_length(:username, min: 3, max: 50)
     |> validate_length(:password, min: 6, max: 100)
-    |> validate_format(:username, ~r/^[a-zA-Z0-9_]+$/, message: "can only contain letters, numbers, and underscores")
+    |> validate_format(:username, ~r/^[a-zA-Z0-9_]+$/,
+      message: "can only contain letters, numbers, and underscores"
+    )
     |> unique_constraint(:username)
     |> validate_inclusion(:type, ["user", "ai", "admin"])
     |> put_password_hash()
     |> put_metadata(attrs)
   end
 
-  defp put_password_hash(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
+  defp put_password_hash(
+         %Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset
+       ) do
     change(changeset, password_hash: Bcrypt.hash_pwd_salt(password))
   end
 
@@ -115,7 +121,11 @@ defmodule Echo.Accounts.User do
         changeset
 
       _ ->
-        add_error(changeset, :metadata, "AI metadata must have 'model' as string and 'system_props' as map")
+        add_error(
+          changeset,
+          :metadata,
+          "AI metadata must have 'model' as string and 'system_props' as map"
+        )
     end
   end
 
@@ -127,11 +137,15 @@ defmodule Echo.Accounts.User do
       {_, nil} ->
         add_error(changeset, :metadata, "AI users must have 'system_props' in metadata")
 
-      {model, system_props} when is_binary(model) and is_map(system_props) ->
+      {model, system_props} when is_binary(model) and is_binary(system_props) ->
         changeset
 
       _ ->
-        add_error(changeset, :metadata, "AI metadata must have 'model' as string and 'system_props' as map")
+        add_error(
+          changeset,
+          :metadata,
+          "AI metadata must have 'model' as string and 'system_props' as map"
+        )
     end
   end
 

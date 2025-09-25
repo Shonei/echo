@@ -43,16 +43,14 @@
 
     <div class="bg-blue-50 border border-blue-200 rounded-md p-4 mt-4">
       <h4 class="text-sm font-medium text-blue-800 mb-2">AI User Metadata Example:</h4>
-      <pre class="text-xs text-blue-700 bg-blue-100 p-2 rounded overflow-x-auto">
-        {
+      <pre class="text-xs text-blue-700 bg-blue-100 p-2 rounded overflow-x-auto"><%= raw ~s|{
   "model": "gpt-4",
   "system_props": {
     "temperature": 0.7,
     "max_tokens": 1000,
     "system_prompt": "You are a helpful assistant."
   }
-}
-</pre>
+}| %></pre>
     </div>
 
     <:actions>
