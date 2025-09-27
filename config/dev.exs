@@ -80,3 +80,6 @@ config :phoenix_live_view,
 # Disable Axiom logging in development
 config :echo,
   axiom_enabled: false
+
+config :echo,
+  gemini_api_key: "AIzaSyDYyMIkKIk8C5zrp4zBZ628KADRANnvaK8"

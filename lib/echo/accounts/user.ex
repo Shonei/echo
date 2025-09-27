@@ -52,16 +52,53 @@ defmodule Echo.Accounts.User do
   defp put_password_hash(changeset), do: changeset
 
   defp put_metadata(changeset, %{"metadata" => metadata}) when is_map(metadata) do
-    encoded_metadata = :erlang.term_to_binary(metadata)
-    change(changeset, metadata: encoded_metadata)
+    case validate_metadata_structure(metadata) do
+      :ok ->
+        encoded_metadata = :erlang.term_to_binary(metadata)
+        change(changeset, metadata: encoded_metadata)
+
+      {:error, message} ->
+        add_error(changeset, :metadata, message)
+    end
   end
 
   defp put_metadata(changeset, %{metadata: metadata}) when is_map(metadata) do
-    encoded_metadata = :erlang.term_to_binary(metadata)
-    change(changeset, metadata: encoded_metadata)
+    case validate_metadata_structure(metadata) do
+      :ok ->
+        encoded_metadata = :erlang.term_to_binary(metadata)
+        change(changeset, metadata: encoded_metadata)
+
+      {:error, message} ->
+        add_error(changeset, :metadata, message)
+    end
   end
 
   defp put_metadata(changeset, _attrs), do: changeset
+
+  # Validates that metadata has string keys and string/number values only.
+  defp validate_metadata_structure(metadata) when is_map(metadata) do
+    case validate_metadata_keys_and_values(metadata) do
+      :ok -> :ok
+      error -> error
+    end
+  end
+
+  defp validate_metadata_structure(_), do: {:error, "metadata must be a map"}
+
+  defp validate_metadata_keys_and_values(metadata) do
+    Enum.reduce_while(metadata, :ok, fn {key, value}, _acc ->
+      cond do
+        not is_binary(key) ->
+          {:halt, {:error, "all metadata keys must be strings"}}
+
+        not (is_binary(value) or is_number(value)) ->
+          {:halt, {:error, "all metadata values must be strings or numbers"}}
+
+        true ->
+          {:cont, :ok}
+      end
+    end)
+  end
 
   @doc """
   Verifies the password against the stored hash.
@@ -110,50 +147,62 @@ defmodule Echo.Accounts.User do
   end
 
   defp validate_ai_metadata(changeset, %{"metadata" => metadata}) when is_map(metadata) do
-    case {Map.get(metadata, "model"), Map.get(metadata, "system_prompt")} do
-      {nil, _} ->
-        add_error(changeset, :metadata, "AI users must have a 'model' in metadata")
-
-      {_, nil} ->
-        add_error(changeset, :metadata, "AI users must have 'system_prompt' in metadata")
-
-      {model, system_prompt} when is_binary(model) and is_map(system_prompt) ->
-        changeset
-
-      _ ->
-        add_error(
-          changeset,
-          :metadata,
-          "AI metadata must have 'model' as string and 'system_prompt' as map"
-        )
-    end
+    validate_ai_metadata_fields(changeset, metadata)
   end
 
   defp validate_ai_metadata(changeset, %{metadata: metadata}) when is_map(metadata) do
-    case {Map.get(metadata, :model), Map.get(metadata, :system_prompt)} do
-      {nil, _} ->
-        add_error(changeset, :metadata, "AI users must have a 'model' in metadata")
+    # Convert atom keys to string keys for consistent validation
+    string_metadata =
+      metadata
+      |> Enum.map(fn {k, v} -> {to_string(k), v} end)
+      |> Map.new()
 
-      {_, nil} ->
-        add_error(changeset, :metadata, "AI users must have 'system_prompt' in metadata")
-
-      {model, system_prompt} when is_binary(model) and is_binary(system_prompt) ->
-        changeset
-
-      _ ->
-        add_error(
-          changeset,
-          :metadata,
-          "AI metadata must have 'model' as string and 'system_prompt' as map"
-        )
-    end
+    validate_ai_metadata_fields(changeset, string_metadata)
   end
 
   defp validate_ai_metadata(changeset, _attrs) do
     add_error(
       changeset,
       :metadata,
-      "AI users must have metadata with 'model' and 'system_prompt'"
+      "AI users must have metadata with 'model', 'prompt', 'temperature', and 'max_tokens'"
     )
+  end
+
+  defp validate_ai_metadata_fields(changeset, metadata) do
+    required_fields = ["model", "prompt", "temperature", "max_tokens"]
+
+    missing_fields =
+      required_fields
+      |> Enum.filter(fn field -> is_nil(Map.get(metadata, field)) end)
+
+    if length(missing_fields) > 0 do
+      add_error(changeset, :metadata, "AI users must have: #{Enum.join(missing_fields, ", ")}")
+    else
+      validate_ai_field_types(changeset, metadata)
+    end
+  end
+
+  defp validate_ai_field_types(changeset, metadata) do
+    model = Map.get(metadata, "model")
+    prompt = Map.get(metadata, "prompt")
+    temperature = Map.get(metadata, "temperature")
+    max_tokens = Map.get(metadata, "max_tokens")
+
+    cond do
+      not is_binary(model) ->
+        add_error(changeset, :metadata, "'model' must be a string")
+
+      not is_binary(prompt) ->
+        add_error(changeset, :metadata, "'prompt' must be a string")
+
+      not (is_binary(temperature) or is_number(temperature)) ->
+        add_error(changeset, :metadata, "'temperature' must be a string or number")
+
+      not (is_binary(max_tokens) or is_number(max_tokens)) ->
+        add_error(changeset, :metadata, "'max_tokens' must be a string or number")
+
+      true ->
+        changeset
+    end
   end
 end

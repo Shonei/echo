@@ -118,9 +118,11 @@ defmodule Echo.AIChatServer do
     if is_nil(api_key) do
       {:error, "Gemini API key not configured"}
     else
-      # Get AI user's system properties and model
-      system_prompt = Map.get(ai_user.metadata, "system_prompt", %{})
+      # Get AI user's configuration from the flat metadata structure
+      prompt = Map.get(ai_user.metadata, "prompt", "You are a helpful assistant.")
       model = Map.get(ai_user.metadata, "model", "gemini-2.5-flash-lite")
+      temperature = parse_number(Map.get(ai_user.metadata, "temperature", "0.7"))
+      max_tokens = parse_number(Map.get(ai_user.metadata, "max_tokens", "1000"))
 
       # Format messages for Gemini
       chat_history = format_messages_for_gemini(recent_messages)
@@ -130,14 +132,14 @@ defmodule Echo.AIChatServer do
           %{
             parts: [
               %{
-                text: system_prompt <> "\n\nChat History:\n" <> chat_history
+                text: prompt <> "\n\nChat History:\n" <> chat_history
               }
             ]
           }
         ],
         generationConfig: %{
-          temperature: 0.7,
-          maxOutputTokens: 1000
+          temperature: temperature,
+          maxOutputTokens: max_tokens
         }
       }
 
@@ -194,4 +196,23 @@ defmodule Echo.AIChatServer do
     System.get_env("GEMINI_API_KEY") ||
       Application.get_env(:echo, :gemini_api_key)
   end
+
+  defp parse_number(value) when is_number(value), do: value
+
+  defp parse_number(value) when is_binary(value) do
+    case Float.parse(value) do
+      {num, ""} ->
+        num
+
+      _ ->
+        case Integer.parse(value) do
+          {num, ""} -> num
+          # Default fallback
+          _ -> 0.7
+        end
+    end
+  end
+
+  # Default fallback
+  defp parse_number(_), do: 0.7
 end

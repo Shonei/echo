@@ -25,32 +25,82 @@
       required 
     />
 
-    <div class="space-y-4">
+    <!-- Regular User Metadata -->
+    <div id="regular_metadata" class="space-y-4">
       <label class="block text-sm font-medium text-gray-700">
         Metadata (JSON format)
       </label>
-      <textarea 
-        name="user[metadata]" 
+      <textarea
+        name="user[metadata]"
         id="user_metadata"
-        rows="6" 
+        rows="6"
         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         placeholder='{"key": "value", "another_key": "another_value"}'
       ></textarea>
       <p class="text-sm text-gray-500">
-        Enter metadata as JSON. For AI users, include "model" and "system_props" fields.
+        Enter metadata as JSON. Keys must be strings, values must be strings or numbers.
       </p>
     </div>
 
-    <div class="bg-blue-50 border border-blue-200 rounded-md p-4 mt-4">
-      <h4 class="text-sm font-medium text-blue-800 mb-2">AI User Metadata Example:</h4>
-      <pre class="text-xs text-blue-700 bg-blue-100 p-2 rounded overflow-x-auto"><%= raw ~s|{
-  "model": "gpt-4",
-  "system_props": {
-    "temperature": 0.7,
-    "max_tokens": 1000,
-    "system_prompt": "You are a helpful assistant."
-  }
-}| %></pre>
+    <!-- AI User Specific Fields -->
+    <div id="ai_metadata" class="space-y-4" style="display: none;">
+      <h3 class="text-lg font-medium text-gray-900">AI Configuration</h3>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Model</label>
+        <input
+          type="text"
+          name="ai_model"
+          id="ai_model"
+          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          placeholder="gemini-2.5-flash-lite"
+          value="gemini-2.5-flash-lite"
+        />
+        <p class="text-sm text-gray-500">The AI model to use for responses</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700">Prompt</label>
+        <textarea
+          name="ai_prompt"
+          id="ai_prompt"
+          rows="4"
+          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          placeholder="You are a helpful assistant."
+        >You are a helpful assistant.</textarea>
+        <p class="text-sm text-gray-500">The system prompt that defines the AI's behavior</p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Temperature</label>
+          <input
+            type="number"
+            name="ai_temperature"
+            id="ai_temperature"
+            step="0.1"
+            min="0"
+            max="2"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            value="0.7"
+          />
+          <p class="text-sm text-gray-500">Controls randomness (0.0-2.0)</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700">Max Tokens</label>
+          <input
+            type="number"
+            name="ai_max_tokens"
+            id="ai_max_tokens"
+            min="1"
+            max="4000"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            value="1000"
+          />
+          <p class="text-sm text-gray-500">Maximum response length</p>
+        </div>
+      </div>
     </div>
 
     <:actions>
@@ -60,7 +110,24 @@
 </div>
 
 <script>
-  // Add some basic JSON validation
+  // Show/hide appropriate metadata fields based on user type
+  document.querySelector('select[name="user[type]"]').addEventListener('change', function() {
+    const regularMetadata = document.getElementById('regular_metadata');
+    const aiMetadata = document.getElementById('ai_metadata');
+    const metadataField = document.getElementById('user_metadata');
+
+    if (this.value === 'ai') {
+      regularMetadata.style.display = 'none';
+      aiMetadata.style.display = 'block';
+      // Clear the regular metadata field since we'll use AI fields
+      metadataField.value = '';
+    } else {
+      regularMetadata.style.display = 'block';
+      aiMetadata.style.display = 'none';
+    }
+  });
+
+  // Add JSON validation for regular metadata
   document.getElementById('user_metadata').addEventListener('blur', function() {
     const value = this.value.trim();
     if (value && value !== '') {
@@ -75,18 +142,25 @@
     }
   });
 
-  // Auto-populate metadata based on user type selection
-  document.querySelector('select[name="user[type]"]').addEventListener('change', function() {
-    const metadataField = document.getElementById('user_metadata');
-    if (this.value === 'ai' && !metadataField.value.trim()) {
-      metadataField.value = JSON.stringify({
-        "model": "gpt-4",
-        "system_props": {
-          "temperature": 0.7,
-          "max_tokens": 1000,
-          "system_prompt": "You are a helpful assistant."
-        }
-      }, null, 2);
+  // Handle form submission to convert AI fields to metadata JSON
+  document.querySelector('form').addEventListener('submit', function(e) {
+    const userType = document.querySelector('select[name="user[type]"]').value;
+
+    if (userType === 'ai') {
+      const model = document.getElementById('ai_model').value;
+      const prompt = document.getElementById('ai_prompt').value;
+      const temperature = document.getElementById('ai_temperature').value;
+      const maxTokens = document.getElementById('ai_max_tokens').value;
+
+      const aiMetadata = {
+        "model": model,
+        "prompt": prompt,
+        "temperature": temperature,
+        "max_tokens": maxTokens
+      };
+
+      // Set the metadata field with the AI configuration
+      document.getElementById('user_metadata').value = JSON.stringify(aiMetadata);
     }
   });
 </script>
