@@ -20,6 +20,8 @@ defmodule Echo.Application do
         {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Echo.PubSub},
         Echo.RequestCache,
+        Echo.AIUserRegistry,
+        Echo.AIChatServer,
         # Start a worker by calling: Echo.Worker.start_link(arg)
         # {Echo.Worker, arg},
         # Start to serve requests, typically the last entry

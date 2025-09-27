@@ -110,46 +110,50 @@ defmodule Echo.Accounts.User do
   end
 
   defp validate_ai_metadata(changeset, %{"metadata" => metadata}) when is_map(metadata) do
-    case {Map.get(metadata, "model"), Map.get(metadata, "system_props")} do
+    case {Map.get(metadata, "model"), Map.get(metadata, "system_prompt")} do
       {nil, _} ->
         add_error(changeset, :metadata, "AI users must have a 'model' in metadata")
 
       {_, nil} ->
-        add_error(changeset, :metadata, "AI users must have 'system_props' in metadata")
+        add_error(changeset, :metadata, "AI users must have 'system_prompt' in metadata")
 
-      {model, system_props} when is_binary(model) and is_map(system_props) ->
+      {model, system_prompt} when is_binary(model) and is_map(system_prompt) ->
         changeset
 
       _ ->
         add_error(
           changeset,
           :metadata,
-          "AI metadata must have 'model' as string and 'system_props' as map"
+          "AI metadata must have 'model' as string and 'system_prompt' as map"
         )
     end
   end
 
   defp validate_ai_metadata(changeset, %{metadata: metadata}) when is_map(metadata) do
-    case {Map.get(metadata, :model), Map.get(metadata, :system_props)} do
+    case {Map.get(metadata, :model), Map.get(metadata, :system_prompt)} do
       {nil, _} ->
         add_error(changeset, :metadata, "AI users must have a 'model' in metadata")
 
       {_, nil} ->
-        add_error(changeset, :metadata, "AI users must have 'system_props' in metadata")
+        add_error(changeset, :metadata, "AI users must have 'system_prompt' in metadata")
 
-      {model, system_props} when is_binary(model) and is_binary(system_props) ->
+      {model, system_prompt} when is_binary(model) and is_binary(system_prompt) ->
         changeset
 
       _ ->
         add_error(
           changeset,
           :metadata,
-          "AI metadata must have 'model' as string and 'system_props' as map"
+          "AI metadata must have 'model' as string and 'system_prompt' as map"
         )
     end
   end
 
   defp validate_ai_metadata(changeset, _attrs) do
-    add_error(changeset, :metadata, "AI users must have metadata with 'model' and 'system_props'")
+    add_error(
+      changeset,
+      :metadata,
+      "AI users must have metadata with 'model' and 'system_prompt'"
+    )
   end
 end

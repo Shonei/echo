@@ -52,6 +52,12 @@ config :logger, :console,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# AI Chat configuration
+config :echo,
+  # Gemini API key for AI chat functionality
+  # Set GEMINI_API_KEY environment variable or configure here
+  gemini_api_key: nil
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

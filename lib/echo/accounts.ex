@@ -101,9 +101,20 @@ defmodule Echo.Accounts do
 
   """
   def create_user(attrs \\ %{}) do
-    %User{}
-    |> User.changeset(attrs)
-    |> Repo.insert()
+    case %User{}
+         |> User.changeset(attrs)
+         |> Repo.insert() do
+      {:ok, user} = result ->
+        # Update AI User Registry if this is an AI user
+        if user.type == "ai" do
+          Echo.AIUserRegistry.add_or_update_ai_user(user)
+        end
+
+        result
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -119,9 +130,17 @@ defmodule Echo.Accounts do
 
   """
   def create_ai_user(attrs \\ %{}) do
-    %User{}
-    |> User.ai_changeset(attrs)
-    |> Repo.insert()
+    case %User{}
+         |> User.ai_changeset(attrs)
+         |> Repo.insert() do
+      {:ok, user} = result ->
+        # Update AI User Registry
+        Echo.AIUserRegistry.add_or_update_ai_user(user)
+        result
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -161,9 +180,37 @@ defmodule Echo.Accounts do
 
   """
   def admin_update_user(%User{} = user, attrs) do
-    user
-    |> User.update_changeset(attrs)
-    |> Repo.update()
+    old_type = user.type
+    old_username = user.username
+
+    case user
+         |> User.update_changeset(attrs)
+         |> Repo.update() do
+      {:ok, updated_user} = result ->
+        # Handle AI User Registry updates
+        cond do
+          # User changed from AI to non-AI
+          old_type == "ai" and updated_user.type != "ai" ->
+            Echo.AIUserRegistry.remove_ai_user(old_username)
+
+          # User changed to AI or updated AI user
+          updated_user.type == "ai" ->
+            Echo.AIUserRegistry.add_or_update_ai_user(updated_user)
+
+          # Username changed for AI user
+          old_username != updated_user.username and updated_user.type == "ai" ->
+            Echo.AIUserRegistry.remove_ai_user(old_username)
+            Echo.AIUserRegistry.add_or_update_ai_user(updated_user)
+
+          true ->
+            :ok
+        end
+
+        result
+
+      error ->
+        error
+    end
   end
 
   @doc """
@@ -179,7 +226,18 @@ defmodule Echo.Accounts do
 
   """
   def delete_user(%User{} = user) do
-    Repo.delete(user)
+    case Repo.delete(user) do
+      {:ok, deleted_user} = result ->
+        # Remove from AI User Registry if it was an AI user
+        if deleted_user.type == "ai" do
+          Echo.AIUserRegistry.remove_ai_user(deleted_user.username)
+        end
+
+        result
+
+      error ->
+        error
+    end
   end
 
   @doc """

@@ -2,6 +2,8 @@ defmodule EchoWeb.ChatController do
   use EchoWeb, :controller
 
   alias Echo.Chat
+  alias Echo.AIChatServer
+  alias Echo.AIUserRegistry
 
   action_fallback EchoWeb.FallbackController
 
@@ -49,6 +51,13 @@ defmodule EchoWeb.ChatController do
       {:ok, message} ->
         # Broadcast the message to WebSocket subscribers
         Chat.broadcast_message(room, message)
+
+        # Check if the message mentions any AI users and process them
+        mentioned_ai_users = AIUserRegistry.find_mentioned_ai_users(message.content)
+
+        if length(mentioned_ai_users) > 0 do
+          AIChatServer.process_ai_mentions(room, message)
+        end
 
         formatted_message = %{
           id: message.id,
