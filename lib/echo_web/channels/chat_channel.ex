@@ -2,7 +2,6 @@ defmodule EchoWeb.ChatChannel do
   use EchoWeb, :channel
 
   alias Echo.Chat
-  alias Phoenix.PubSub
 
   @impl true
   def join("chat:" <> room, payload, socket) do

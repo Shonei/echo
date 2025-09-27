@@ -4,22 +4,27 @@ defmodule Echo.Application do
   @moduledoc false
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
-    children = [
-      EchoWeb.Telemetry,
-      Echo.Repo,
-      {Ecto.Migrator,
-       repos: Application.fetch_env!(:echo, :ecto_repos), skip: skip_migrations?()},
-      {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Echo.PubSub},
-      Echo.RequestCache,
-      # Start a worker by calling: Echo.Worker.start_link(arg)
-      # {Echo.Worker, arg},
-      # Start to serve requests, typically the last entry
-      EchoWeb.Endpoint
-    ]
+    # Configure Axiom logger if enabled
+    setup_axiom_logging()
+
+    children =
+      [
+        EchoWeb.Telemetry,
+        Echo.Repo,
+        {Ecto.Migrator,
+         repos: Application.fetch_env!(:echo, :ecto_repos), skip: skip_migrations?()},
+        {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Echo.PubSub},
+        Echo.RequestCache,
+        # Start a worker by calling: Echo.Worker.start_link(arg)
+        # {Echo.Worker, arg},
+        # Start to serve requests, typically the last entry
+        EchoWeb.Endpoint
+      ] ++ axiom_logger_child()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -38,5 +43,33 @@ defmodule Echo.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") != nil
+  end
+
+  defp axiom_logger_child do
+    if Echo.AxiomConfig.enabled?() do
+      try do
+        Echo.AxiomConfig.validate_config!()
+        [{Echo.AxiomLogger, Echo.AxiomConfig.logger_config()}]
+      rescue
+        error ->
+          Logger.error("Failed to setup Axiom logging: #{inspect(error)}")
+          []
+      end
+    else
+      []
+    end
+  end
+
+  defp setup_axiom_logging do
+    if Echo.AxiomConfig.enabled?() do
+      # Install a custom logger handler that forwards to our GenServer
+      :logger.add_handler(:axiom_forwarder, Echo.AxiomLoggerHandler, %{})
+
+      Logger.info(
+        "Axiom logging enabled - logs will be sent to dataset: #{Echo.AxiomConfig.get_dataset()}"
+      )
+    else
+      Logger.debug("Axiom logging disabled")
+    end
   end
 end

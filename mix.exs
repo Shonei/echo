@@ -58,7 +58,8 @@ defmodule Echo.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
       {:ecto_sqlite3_extras, "~> 1.2.0"},
-      {:bcrypt_elixir, "~> 3.0"}
+      {:bcrypt_elixir, "~> 3.0"},
+      {:httpoison, "~> 2.0"}
     ]
   end
 

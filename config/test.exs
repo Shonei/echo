@@ -20,6 +20,9 @@ config :echo, EchoWeb.Endpoint,
 # Print only warnings and errors during test
 config :logger, level: :warning
 
+# Disable Axiom logging in tests by default
+config :echo, axiom_enabled: false
+
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
 
