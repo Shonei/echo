@@ -18,7 +18,7 @@ defmodule Echo.Chat.Message do
     message
     |> cast(attrs, [:content, :room, :user_id, :username])
     |> validate_required([:content, :room, :user_id, :username])
-    |> validate_length(:content, min: 1, max: 1000)
+    |> validate_length(:content, min: 1, max: 10000)
     |> validate_length(:room, min: 1, max: 100)
     |> validate_length(:username, min: 1, max: 50)
   end
