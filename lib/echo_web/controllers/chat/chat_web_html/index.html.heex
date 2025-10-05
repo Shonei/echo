@@ -1,7 +1,16 @@
-<.header>
-  Real-time Chat
-  <:subtitle>Choose a room to start chatting</:subtitle>
-</.header>
+<div class="flex justify-between items-center mb-4">
+  <.header class="mb-0">
+    Real-time Chat
+    <:subtitle>Choose a room to start chatting</:subtitle>
+  </.header>
+
+  <.link
+    navigate={~p"/users"}
+    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+  >
+    Users
+  </.link>
+</div>
 
 <div class="max-w-4xl mx-auto">
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
