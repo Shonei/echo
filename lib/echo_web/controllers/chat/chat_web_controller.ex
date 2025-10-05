@@ -46,6 +46,35 @@ defmodule EchoWeb.ChatWebController do
     end
   end
 
+  def edit(conn, %{"id" => id}) do
+    # Set a user session if not exists
+    conn =
+      if get_session(conn, :user_id) do
+        conn
+      else
+        user_id = "user_#{:rand.uniform(1_000_000)}"
+        put_session(conn, :user_id, user_id)
+      end
+
+    chat_room = ChatRooms.get_chat_room!(id)
+    changeset = ChatRooms.change_chat_room(chat_room)
+    render(conn, :edit, chat_room: chat_room, changeset: changeset)
+  end
+
+  def update(conn, %{"id" => id, "chat_room" => chat_room_params}) do
+    chat_room = ChatRooms.get_chat_room!(id)
+
+    case ChatRooms.update_chat_room(chat_room, chat_room_params) do
+      {:ok, _chat_room} ->
+        conn
+        |> put_flash(:info, "Chat room updated successfully.")
+        |> redirect(to: ~p"/chat")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(conn, :edit, chat_room: chat_room, changeset: changeset)
+    end
+  end
+
   def room(conn, %{"room" => room}) do
     # Set a user session if not exists
     conn =

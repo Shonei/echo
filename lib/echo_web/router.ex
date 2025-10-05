@@ -26,6 +26,8 @@ defmodule EchoWeb.Router do
     get "/chat", ChatWebController, :index
     get "/chat/rooms/new", ChatWebController, :new
     post "/chat/rooms", ChatWebController, :create
+    get "/chat/rooms/:id/edit", ChatWebController, :edit
+    put "/chat/rooms/:id", ChatWebController, :update
     get "/chat/:room", ChatWebController, :room
 
     # User management web interface
