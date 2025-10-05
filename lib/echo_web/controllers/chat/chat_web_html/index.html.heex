@@ -4,47 +4,54 @@
     <:subtitle>Choose a room to start chatting</:subtitle>
   </.header>
 
-  <.link
-    navigate={~p"/users"}
-    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-  >
-    Users
-  </.link>
+  <div class="flex gap-2">
+    <.link
+      navigate={~p"/chat/rooms/new"}
+      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+    >
+      Create Room
+    </.link>
+    <.link
+      navigate={~p"/users"}
+      class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+    >
+      Users
+    </.link>
+  </div>
 </div>
 
 <div class="max-w-4xl mx-auto">
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-      <h3 class="text-xl font-semibold text-gray-900 mb-2">General</h3>
-      <p class="text-gray-600 mb-4">General discussion and casual conversation</p>
+  <%= if @rooms == [] do %>
+    <div class="text-center py-12">
+      <p class="text-gray-500 text-lg mb-4">No chat rooms available yet.</p>
       <.link
-        navigate={~p"/chat/general"}
-        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-      >
-        Join Room
-      </.link>
-    </div>
-
-    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-      <h3 class="text-xl font-semibold text-gray-900 mb-2">Tech</h3>
-      <p class="text-gray-600 mb-4">Technology discussions and programming help</p>
-      <.link
-        navigate={~p"/chat/tech"}
+        navigate={~p"/chat/rooms/new"}
         class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
       >
-        Join Room
+        Create the first room
       </.link>
     </div>
-
-    <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-      <h3 class="text-xl font-semibold text-gray-900 mb-2">Random</h3>
-      <p class="text-gray-600 mb-4">Random topics and off-topic discussions</p>
-      <.link
-        navigate={~p"/chat/random"}
-        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500"
-      >
-        Join Room
-      </.link>
+  <% else %>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+      <%= for room <- @rooms do %>
+        <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+          <h3 class="text-xl font-semibold text-gray-900 mb-2"><%= room.name %></h3>
+          <p class="text-gray-600 mb-2"><%= room.description %></p>
+          <%= if room.type do %>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mb-4">
+              <%= room.type %>
+            </span>
+          <% end %>
+          <div class="mt-4">
+            <.link
+              navigate={~p"/chat/#{room.name}"}
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Join Room
+            </.link>
+          </div>
+        </div>
+      <% end %>
     </div>
-  </div>
+  <% end %>
 </div>

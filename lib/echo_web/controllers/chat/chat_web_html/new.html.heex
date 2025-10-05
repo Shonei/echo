@@ -1,0 +1,40 @@
+<div class="max-w-2xl mx-auto">
+  <div class="mb-6">
+    <.link
+      navigate={~p"/chat"}
+      class="inline-flex items-center text-sm text-gray-600 hover:text-gray-900"
+    >
+      ← Back to Chat Rooms
+    </.link>
+  </div>
+
+  <.header>
+    Create New Chat Room
+    <:subtitle>Fill in the details to create a new chat room</:subtitle>
+  </.header>
+
+  <.simple_form :let={f} for={@changeset} action={~p"/chat/rooms"} class="mt-8">
+    <.error :if={@changeset.action}>
+      Oops, something went wrong! Please check the errors below.
+    </.error>
+
+    <.input field={f[:name]} type="text" label="Room Name" required />
+    <.input field={f[:description]} type="textarea" label="Description" required />
+    <.input
+      field={f[:type]}
+      type="select"
+      label="Room Type"
+      options={[
+        {"General", "general"},
+        {"AI", "ai"}
+      ]}
+      required
+    />
+    <.input field={f[:password]} type="password" label="Password" required />
+
+    <:actions>
+      <.button class="w-full">Create Chat Room</.button>
+    </:actions>
+  </.simple_form>
+</div>
+
