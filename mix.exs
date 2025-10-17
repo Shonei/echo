@@ -59,7 +59,8 @@ defmodule Echo.MixProject do
       {:bandit, "~> 1.5"},
       {:ecto_sqlite3_extras, "~> 1.2.0"},
       {:bcrypt_elixir, "~> 3.0"},
-      {:httpoison, "~> 2.0"}
+      {:httpoison, "~> 2.0"},
+      {:ex_llm, "~> 0.8.1"}
     ]
   end
 
