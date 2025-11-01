@@ -33,6 +33,8 @@ defmodule EchoWeb.Router do
     # User management web interface
     resources "/users", UserWebController do
       get "/type/:type", UserWebController, :by_type, as: :user_by_type
+      post "/tools", UserWebController, :add_tool, as: :user_tool
+      delete "/tools/:tool_id", UserWebController, :delete_tool, as: :user_tool
     end
 
     get "/users/type/:type", UserWebController, :by_type

@@ -84,6 +84,62 @@
             <% end %>
           </dd>
         </div>
+
+        <%= if @user.type == "ai" do %>
+          <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+            <dt class="text-sm font-medium text-gray-500">
+              Configured Tools
+            </dt>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+              <%= if @tools == [] do %>
+                <span class="text-gray-400 italic">No tools configured</span>
+              <% else %>
+                <div class="space-y-3">
+                  <%= for tool <- @tools do %>
+                    <div class="bg-white border border-gray-200 rounded-lg p-4">
+                      <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                          <div class="flex items-center space-x-2 mb-2">
+                            <span class={[
+                              "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                              case tool.function_type do
+                                "calculator" -> "bg-green-100 text-green-800"
+                                "http" -> "bg-blue-100 text-blue-800"
+                                _ -> "bg-gray-100 text-gray-800"
+                              end
+                            ]}>
+                              <%= tool.function_type %>
+                            </span>
+                            <span class="text-sm font-semibold text-gray-900">
+                              <%= tool.description %>
+                            </span>
+                          </div>
+
+                          <%= if tool.function_type == "http" do %>
+                            <div class="mt-2 space-y-1">
+                              <div class="flex items-center text-xs text-gray-600">
+                                <span class="font-medium mr-2">Method:</span>
+                                <span class="px-2 py-0.5 bg-gray-100 rounded font-mono"><%= tool.http_method %></span>
+                              </div>
+                              <div class="flex items-center text-xs text-gray-600">
+                                <span class="font-medium mr-2">URL:</span>
+                                <span class="font-mono text-blue-600"><%= tool.http_url %></span>
+                              </div>
+                            </div>
+                          <% end %>
+                        </div>
+                      </div>
+
+                      <div class="mt-2 text-xs text-gray-400">
+                        Added <%= Calendar.strftime(tool.inserted_at, "%Y-%m-%d %H:%M") %>
+                      </div>
+                    </div>
+                  <% end %>
+                </div>
+              <% end %>
+            </dd>
+          </div>
+        <% end %>
       </dl>
     </div>
   </div>

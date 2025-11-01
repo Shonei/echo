@@ -3,6 +3,7 @@ defmodule EchoWeb.UserWebController do
 
   alias Echo.Accounts
   alias Echo.Accounts.User
+  alias Echo.Tools
 
   def index(conn, _params) do
     users = Accounts.list_users()
@@ -13,7 +14,8 @@ defmodule EchoWeb.UserWebController do
     case Accounts.get_user(id) do
       %User{} = user ->
         metadata = Accounts.get_user_metadata(user)
-        render(conn, :show, user: user, metadata: metadata)
+        tools = Tools.list_tool_configs_by_user(user.id)
+        render(conn, :show, user: user, metadata: metadata, tools: tools)
 
       nil ->
         conn
@@ -61,7 +63,8 @@ defmodule EchoWeb.UserWebController do
       %User{} = user ->
         changeset = Accounts.change_user(user)
         metadata = Accounts.get_user_metadata(user)
-        render(conn, :edit, user: user, changeset: changeset, metadata: metadata)
+        tools = Tools.list_tool_configs_by_user(user.id)
+        render(conn, :edit, user: user, changeset: changeset, metadata: metadata, tools: tools)
 
       nil ->
         conn
@@ -122,7 +125,68 @@ defmodule EchoWeb.UserWebController do
     render(conn, :by_type, users: users, type: type)
   end
 
-  defp parse_metadata(%{"metadata" => metadata_string} = params) when is_binary(metadata_string) do
+  def add_tool(conn, %{"user_web_id" => user_id, "tool" => tool_params}) do
+    case Accounts.get_user(user_id) do
+      %User{type: "ai"} = user ->
+        tool_params = Map.put(tool_params, "user_id", user.id)
+
+        case Tools.create_tool_config(tool_params) do
+          {:ok, _tool} ->
+            conn
+            |> put_flash(:info, "Tool added successfully.")
+            |> redirect(to: ~p"/users/#{user}/edit")
+
+          {:error, _changeset} ->
+            conn
+            |> put_flash(:error, "Failed to add tool. Please check your input.")
+            |> redirect(to: ~p"/users/#{user}/edit")
+        end
+
+      %User{} ->
+        conn
+        |> put_flash(:error, "Tools can only be added to AI users.")
+        |> redirect(to: ~p"/users")
+
+      nil ->
+        conn
+        |> put_flash(:error, "User not found")
+        |> redirect(to: ~p"/users")
+    end
+  end
+
+  def delete_tool(conn, %{"user_web_id" => user_id, "tool_id" => tool_id}) do
+    case Accounts.get_user(user_id) do
+      %User{} = user ->
+        case Tools.get_tool_config(tool_id) do
+          nil ->
+            conn
+            |> put_flash(:error, "Tool not found")
+            |> redirect(to: ~p"/users/#{user}/edit")
+
+          tool ->
+            # Verify the tool belongs to this user
+            if tool.user_id == user.id do
+              {:ok, _tool} = Tools.delete_tool_config(tool)
+
+              conn
+              |> put_flash(:info, "Tool deleted successfully.")
+              |> redirect(to: ~p"/users/#{user}/edit")
+            else
+              conn
+              |> put_flash(:error, "Unauthorized")
+              |> redirect(to: ~p"/users")
+            end
+        end
+
+      nil ->
+        conn
+        |> put_flash(:error, "User not found")
+        |> redirect(to: ~p"/users")
+    end
+  end
+
+  defp parse_metadata(%{"metadata" => metadata_string} = params)
+       when is_binary(metadata_string) do
     case Jason.decode(metadata_string) do
       {:ok, metadata} when is_map(metadata) ->
         Map.put(params, "metadata", metadata)
