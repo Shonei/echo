@@ -29,15 +29,6 @@ defmodule EchoWeb.Router do
     get "/chat/rooms/:id/edit", ChatWebController, :edit
     put "/chat/rooms/:id", ChatWebController, :update
     get "/chat/:room", ChatWebController, :room
-
-    # User management web interface
-    resources "/users", UserWebController do
-      get "/type/:type", UserWebController, :by_type, as: :user_by_type
-      post "/tools", UserWebController, :add_tool, as: :user_tool
-      delete "/tools/:tool_id", UserWebController, :delete_tool, as: :user_tool
-    end
-
-    get "/users/type/:type", UserWebController, :by_type
   end
 
   scope "/echo", EchoWeb do
