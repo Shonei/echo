@@ -57,15 +57,6 @@ defmodule EchoWeb.Router do
     get "/rooms", ChatRoomController, :index
     post "/rooms", ChatRoomController, :create
     put "/rooms/:id", ChatRoomController, :update
-
-    # User management API
-    resources "/users", UserController, except: [:new, :edit] do
-      get "/metadata", UserController, :metadata, as: :user_metadata
-      put "/metadata", UserController, :update_metadata, as: :user_metadata
-    end
-
-    post "/users/authenticate", UserController, :authenticate
-    get "/users/type/:type", UserController, :by_type
   end
 
   scope "/api/v1", EchoWeb do

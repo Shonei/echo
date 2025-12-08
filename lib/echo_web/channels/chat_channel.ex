@@ -2,8 +2,6 @@ defmodule EchoWeb.ChatChannel do
   use EchoWeb, :channel
 
   alias Echo.Chat
-  alias Echo.AIChatServer
-  alias Echo.AIUserRegistry
 
   @impl true
   def join("chat:" <> room, payload, socket) do
@@ -44,13 +42,6 @@ defmodule EchoWeb.ChatChannel do
         # Broadcast the message to all subscribers
         # Chat.broadcast_message(room, message)
         broadcast!(socket, "new_message", %{message: format_message(message)})
-
-        # Check if the message mentions any AI users and process them
-        mentioned_ai_users = AIUserRegistry.find_mentioned_ai_users(content)
-
-        if length(mentioned_ai_users) > 0 do
-          AIChatServer.process_ai_mentions(room, message)
-        end
 
         {:reply, {:ok, %{message: format_message(message)}}, socket}
 
