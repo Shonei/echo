@@ -2,6 +2,14 @@ defmodule EchoWeb.AuditJSON do
   alias Echo.AuditSession
   alias Echo.AuditEvent
 
+  def index(%{sessions: sessions}) do
+    %{data: for(session <- sessions, do: data(session))}
+  end
+
+  def events(%{events: events}) do
+    %{data: for(event <- events, do: data(event))}
+  end
+
   def show_session(%{session: session}) do
     %{data: data(session)}
   end

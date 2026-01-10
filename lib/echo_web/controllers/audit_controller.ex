@@ -23,4 +23,14 @@ defmodule EchoWeb.AuditController do
       |> render(:show_event, event: event)
     end
   end
+
+  def index(conn, params) do
+    sessions = AuditSessions.list_sessions(params)
+    render(conn, :index, sessions: sessions)
+  end
+
+  def events(conn, %{"session_id" => session_id}) do
+    events = AuditEvents.list_events(session_id)
+    render(conn, :events, events: events)
+  end
 end

@@ -52,6 +52,8 @@ defmodule EchoWeb.Router do
     scope "/audit" do
       post "/sessions", AuditController, :create_session
       post "/events", AuditController, :create_event
+      get "/sessions", AuditController, :index
+      get "/sessions/:session_id/events", AuditController, :events
     end
   end
 

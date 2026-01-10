@@ -8,34 +8,38 @@ defmodule Echo.AuditSessions do
 
   alias Echo.AuditSession
 
-  def count_audit_events(filters \\ %{}) do
-    with {:ok, query} <- build_search_query(AuditSession, filters) do
-      {:ok, Repo.aggregate(query, :count)}
-    end
-  end
-
   def save_session(attrs \\ %{}) do
     %AuditSession{}
     |> AuditSession.changeset(attrs)
     |> Repo.insert()
   end
 
-  def search_audit_events(filters \\ %{}) do
-    with {:ok, query} <- build_search_query(AuditSession, filters) do
-      results =
-        query
-        |> order_by(desc: :created_at)
-        |> Repo.all()
+  def list_sessions(params \\ %{}) do
+    page = Map.get(params, "page", 1)
+    page_size = Map.get(params, "page_size", 10)
 
-      {:ok, results}
-    end
-  end
+    # Enforce min 10, max 50
+    page_size =
+      case Integer.parse(to_string(page_size)) do
+        {size, _} -> max(10, min(size, 50))
+        :error -> 10
+      end
 
-  defp build_search_query(query, %{session_hash: hash}) when not is_nil(hash) do
-    {:ok, from(r in query, where: r.session_hash == ^hash)}
-  end
+    page =
+      case Integer.parse(to_string(page)) do
+        {p, _} -> max(1, p)
+        :error -> 1
+      end
 
-  defp build_search_query(_query, _filters) do
-    {:error, :missing_session_hash}
+    offset = (page - 1) * page_size
+
+    query =
+      from(s in AuditSession,
+        order_by: [desc: s.created_at],
+        limit: ^page_size,
+        offset: ^offset
+      )
+
+    Repo.all(query)
   end
 end
