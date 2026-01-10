@@ -2,11 +2,12 @@ defmodule Echo.AuditEvent do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @primary_key {:id, :string, autogenerate: false}
   schema "audit_events" do
-    field :session_hash, :string
+    belongs_to :session, Echo.AuditSession, type: :string
     field :type, :string
     field :created_at, :utc_datetime
-    field :payload, :binary
+    field :payload, :map
     field :content, :string
 
     timestamps(type: :utc_datetime)
@@ -15,7 +16,7 @@ defmodule Echo.AuditEvent do
   @doc false
   def changeset(audit_event, attrs) do
     audit_event
-    |> cast(attrs, [:session_hash, :type, :created_at, :payload, :content])
-    |> validate_required([:session_hash, :type, :created_at, :payload, :content])
+    |> cast(attrs, [:id, :session_id, :type, :created_at, :payload, :content])
+    |> validate_required([:id, :session_id, :type, :created_at, :payload, :content])
   end
 end

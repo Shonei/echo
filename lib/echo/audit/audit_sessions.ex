@@ -14,7 +14,7 @@ defmodule Echo.AuditSessions do
     end
   end
 
-  def create_audit_event(attrs \\ %{}) do
+  def save_session(attrs \\ %{}) do
     %AuditSession{}
     |> AuditSession.changeset(attrs)
     |> Repo.insert()

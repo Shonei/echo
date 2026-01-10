@@ -14,7 +14,7 @@ defmodule Echo.AuditEvents do
     end
   end
 
-  def create_audit_event(attrs \\ %{}) do
+  def save_event(attrs \\ %{}) do
     %AuditEvent{}
     |> AuditEvent.changeset(attrs)
     |> Repo.insert()
@@ -31,11 +31,11 @@ defmodule Echo.AuditEvents do
     end
   end
 
-  defp build_search_query(query, %{session_hash: hash}) when not is_nil(hash) do
-    {:ok, from(r in query, where: r.session_hash == ^hash)}
+  defp build_search_query(query, %{session_id: id}) when not is_nil(id) do
+    {:ok, from(r in query, where: r.session_id == ^id)}
   end
 
   defp build_search_query(_query, _filters) do
-    {:error, :missing_session_hash}
+    {:error, :missing_session_id}
   end
 end
