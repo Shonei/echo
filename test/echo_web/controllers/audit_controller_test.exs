@@ -136,4 +136,54 @@ defmodule EchoWeb.AuditControllerTest do
       assert data == []
     end
   end
+
+  describe "authentication" do
+    test "allows access when no password configured", %{conn: conn} do
+      Application.put_env(:echo, :audit_password, nil)
+
+      params = %{
+        "id" => "sess_auth_none",
+        "session_hash" => "hash",
+        "system_prompt" => "prompt",
+        "created_at" => ~U[2024-01-01 12:00:00Z]
+      }
+
+      conn = post(conn, ~p"/api/v1/audit/sessions", params)
+      assert %{"id" => "sess_auth_none"} = json_response(conn, 201)["data"]
+    end
+
+    test "denies access when password configured and header missing", %{conn: conn} do
+      Application.put_env(:echo, :audit_password, "secret123")
+      on_exit(fn -> Application.put_env(:echo, :audit_password, nil) end)
+
+      params = %{
+        "id" => "sess_auth_fail",
+        "session_hash" => "hash",
+        "system_prompt" => "prompt",
+        "created_at" => ~U[2024-01-01 12:00:00Z]
+      }
+
+      conn = post(conn, ~p"/api/v1/audit/sessions", params)
+      assert response(conn, 401)
+    end
+
+    test "allows access when password configured and header present", %{conn: conn} do
+      Application.put_env(:echo, :audit_password, "secret123")
+      on_exit(fn -> Application.put_env(:echo, :audit_password, nil) end)
+
+      params = %{
+        "id" => "sess_auth_success",
+        "session_hash" => "hash",
+        "system_prompt" => "prompt",
+        "created_at" => ~U[2024-01-01 12:00:00Z]
+      }
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer secret123")
+        |> post(~p"/api/v1/audit/sessions", params)
+
+      assert %{"id" => "sess_auth_success"} = json_response(conn, 201)["data"]
+    end
+  end
 end
