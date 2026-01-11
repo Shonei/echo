@@ -23,9 +23,8 @@ end
 config :logger, :default_handler,
   formatter: LoggerJSON.Formatters.Basic.new(metadata: [:request_id, :mfa, :file, :line])
 
-# Configure Gemini API key from environment
-if gemini_api_key = System.get_env("GEMINI_API_KEY") do
-  config :echo, gemini_api_key: gemini_api_key
+if audit_password = System.get_env("AUDIT_PASSWORD") do
+  config :echo, :audit_password, audit_password
 end
 
 if config_env() == :prod do

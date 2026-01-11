@@ -1,18 +1,68 @@
 # Echo
 
+Echo is a Phoenix application featuring Chat, Request Echoing, and Audit Logging capabilities.
+
+## Local Development
+
 To start your Phoenix server:
 
-  * Run `mix setup` to install and setup dependencies
-  * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+1.  **Install dependencies**:
+    ```bash
+    mix setup
+    ```
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+2.  **Environment Variables** (Optional):
+    *   `AUDIT_PASSWORD`: Master password for Audit API (POST requests).
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
 
-## Learn more
+3.  **Start the server**:
+    ```bash
+    mix phx.server
+    ```
 
-  * Official website: https://www.phoenixframework.org/
-  * Guides: https://hexdocs.pm/phoenix/overview.html
-  * Docs: https://hexdocs.pm/phoenix
-  * Forum: https://elixirforum.com/c/phoenix-forum
-  * Source: https://github.com/phoenixframework/phoenix
+Visit [`localhost:4000`](http://localhost:4000) in your browser.
+
+## API Endpoints
+
+### JSON API (`/api/v1`)
+
+| Resource | Method | Endpoint | Description | Auth |
+|----------|--------|----------|-------------|------|
+| **Audit** | POST | `/audit/sessions` | Create session | **Yes** (Bearer) |
+| | POST | `/audit/events` | Log event | **Yes** (Bearer) |
+| | GET | `/audit/sessions` | List sessions | No |
+| | GET | `/audit/sessions/:id/events` | List events | No |
+| **Chat** | GET | `/chat/rooms` | List rooms | No |
+| | GET | `/chat/:room/messages` | Get messages | No |
+| | POST | `/chat/:room/messages` | Post message | No |
+| **Rooms** | GET | `/rooms` | List rooms | No |
+| | POST | `/rooms` | Create room | No |
+
+**Authentication**: For protected endpoints, send the header `Authorization: Bearer <AUDIT_PASSWORD>`.
+
+### Web Interface
+*   `/chat` - Real-time chat interface.
+*   `/echo/request` - View echoed HTTP requests.
+
+## Production Config
+
+To run in production, set these environment variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_PATH` | Path to SQLite DB (e.g., `/data/echo.db`) | Yes |
+| `SECRET_KEY_BASE` | Generate with `mix phx.gen.secret` | Yes |
+| `PHX_HOST` | Domain name (e.g., `myapp.com`) | Yes |
+| `AUDIT_PASSWORD` | Password for Audit API | Yes |
+
+### Running a Release
+
+```bash
+# 1. Build release
+mix release
+
+# 2. Start server
+PHX_SERVER=true bin/echo start
+```
+
+For detailed deployment steps, see the [Phoenix Deployment Guides](https://hexdocs.pm/phoenix/deployment.html).

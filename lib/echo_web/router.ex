@@ -48,6 +48,17 @@ defmodule EchoWeb.Router do
     get "/rooms", ChatRoomController, :index
     post "/rooms", ChatRoomController, :create
     put "/rooms/:id", ChatRoomController, :update
+
+    scope "/audit" do
+      pipe_through EchoWeb.Plugs.AuditAuth
+      post "/sessions", AuditController, :create_session
+      post "/events", AuditController, :create_event
+    end
+
+    scope "/audit" do
+      get "/sessions", AuditController, :index
+      get "/sessions/:session_id/events", AuditController, :events
+    end
   end
 
   scope "/api/v1", EchoWeb do

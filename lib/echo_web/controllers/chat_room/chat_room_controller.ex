@@ -11,15 +11,6 @@ defmodule EchoWeb.ChatRoomController do
     render(conn, :index, chat_room: chat_room)
   end
 
-  def create(conn, %{"chat_room" => chat_room_params}) do
-    with {:ok, %ChatRoom{} = chat_room} <- ChatRooms.create_chat_room(chat_room_params) do
-      conn
-      |> put_status(:created)
-      |> put_resp_header("location", ~p"/api/chat_room/#{chat_room}")
-      |> render(:show, chat_room: chat_room)
-    end
-  end
-
   def show(conn, %{"id" => id}) do
     chat_room = ChatRooms.get_chat_room!(id)
     render(conn, :show, chat_room: chat_room)

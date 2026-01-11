@@ -42,22 +42,7 @@ Keep your responses concise and friendly, as this is a casual chat environment.
 
 ## Configuration
 
-### Environment Variables
 
-Set the following environment variable to enable AI chat:
-
-```bash
-export GEMINI_API_KEY="your-gemini-api-key-here"
-```
-
-### Application Configuration
-
-Alternatively, you can configure the API key in your application config:
-
-```elixir
-config :echo,
-  gemini_api_key: "your-gemini-api-key-here"
-```
 
 ## Usage
 
@@ -101,13 +86,7 @@ AI Assistant: Phoenix LiveView is a library that enables rich, interactive web a
 7. AI response is saved as a new message from "AI Assistant"
 8. AI message is broadcast to all chat participants
 
-## Getting a Gemini API Key
 
-1. Go to [Google AI Studio](https://aistudio.google.com/)
-2. Sign in with your Google account
-3. Click "Get API Key" 
-4. Create a new API key
-5. Copy the key and set it as the `GEMINI_API_KEY` environment variable
 
 ## Limitations
 
