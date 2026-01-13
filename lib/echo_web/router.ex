@@ -59,6 +59,10 @@ defmodule EchoWeb.Router do
       get "/sessions", AuditController, :index
       get "/sessions/:session_id/events", AuditController, :events
     end
+
+    resources "/blogs", BlogController, except: [:new, :edit] do
+      resources "/revisions", RevisionController, only: [:index, :show]
+    end
   end
 
   scope "/api/v1", EchoWeb do
