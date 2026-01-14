@@ -11,11 +11,13 @@ defmodule EchoWeb.BlogController do
     render(conn, :index, blogs: blogs)
   end
 
-  def create(conn, %{"blog" => blog_params}) do
+  def create(conn, params) do
+    blog_params = params["blog"] || %{}
+
     with {:ok, %Blog{} = blog} <- Content.create_blog(blog_params) do
-      blog = Content.get_blog!(blog.id)
       conn
       |> put_status(:created)
+      |> put_resp_header("location", ~p"/api/v1/blogs/#{blog}")
       |> render(:show, blog: blog)
     end
   end
@@ -28,9 +30,15 @@ defmodule EchoWeb.BlogController do
   def update(conn, %{"id" => id, "blog" => blog_params}) do
     blog = Content.get_blog!(id)
 
-    with {:ok, %Blog{} = blog} <- Content.update_blog(blog, blog_params) do
-      # Reload to ensure we have revisions preloaded and latest data
-      blog = Content.get_blog!(blog.id)
+    with {:ok, %Blog{} = blog} <- Content.update_blog_metadata(blog, blog_params) do
+      render(conn, :show, blog: blog)
+    end
+  end
+
+  def update_content(conn, %{"blog_id" => blog_id, "content" => content}) do
+    blog = Content.get_blog!(blog_id)
+
+    with {:ok, %Blog{} = blog} <- Content.update_blog_content(blog, content) do
       render(conn, :show, blog: blog)
     end
   end

@@ -61,7 +61,8 @@ defmodule EchoWeb.Router do
     end
 
     resources "/blogs", BlogController, except: [:new, :edit] do
-      resources "/revisions", RevisionController, only: [:index, :show]
+      put "/content", BlogController, :update_content
+      resources "/revisions", RevisionController, only: [:index, :create]
     end
   end
 

@@ -40,9 +40,11 @@ Visit [`localhost:4000`](http://localhost:4000) in your browser.
 | **Blogs** | GET | `/blogs` | List blogs | No |
 | | POST | `/blogs` | Create blog | No |
 | | GET | `/blogs/:id` | Get blog | No |
-| | PUT | `/blogs/:id` | Update blog | No |
+| | PUT | `/blogs/:id` | Update metadata | No |
+| | PUT | `/blogs/:id/content` | Update content | No |
 | | DELETE | `/blogs/:id` | Delete blog | No |
-| | GET | `/blogs/:id/revisions` | List revisions | No |
+| **Revisions**| GET | `/blogs/:id/revisions` | List revisions | No |
+| | POST | `/blogs/:id/revisions` | Create revision | No |
 
 **Authentication**: For protected endpoints, send the header `Authorization: Bearer <AUDIT_PASSWORD>`.
 

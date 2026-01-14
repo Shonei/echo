@@ -16,20 +16,17 @@ defmodule EchoWeb.BlogJSON do
   end
 
   defp data(%Blog{} = blog) do
-    latest_revision = if Ecto.assoc_loaded?(blog.revisions) do
-      List.first(Enum.sort_by(blog.revisions, & &1.version, :desc))
-    else
-      nil
-    end
-
     %{
       id: blog.id,
       title: blog.title,
       slug: blog.slug,
       status: blog.status,
-      content: if(latest_revision, do: latest_revision.content, else: nil),
-      current_version: if(latest_revision, do: latest_revision.version, else: nil),
-      revisions_count: if(Ecto.assoc_loaded?(blog.revisions), do: length(blog.revisions), else: 0),
+      content: blog.content,
+      icon: blog.icon,
+      background_image: blog.background_image,
+      cover_image: blog.cover_image,
+      description: blog.description,
+      tags: blog.tags,
       created_at: blog.inserted_at,
       updated_at: blog.updated_at
     }
