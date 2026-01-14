@@ -11,11 +11,5 @@ defmodule Echo.Repo.Migrations.CreateBlogRevisions do
     end
 
     create index(:blog_revisions, [:blog_id])
-
-    alter table(:blogs) do
-      add :revision_id, references(:blog_revisions, on_delete: :nilify_all)
-    end
-
-    create index(:blogs, [:revision_id])
   end
 end

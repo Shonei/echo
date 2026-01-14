@@ -13,8 +13,8 @@ The Blog API allows you to create, read, update, and delete blogs. It also featu
 | `status` | String | `draft`, `public`, or `private` |
 | `created_at` | Timestamp | Creation date |
 | `updated_at` | Timestamp | Last update date |
-| `current_version` | Integer | Version number of the latest content |
-| `content` | String | Content from the latest revision |
+| `content` | String | Current content |
+| `tags` | String | Comma-separated tags (JSON string) |
 
 ### Revision
 | Field | Type | Description |
@@ -34,7 +34,7 @@ Base URL: `/api/v1`
 
 ### 1. List Blogs
 
-Returns a list of all blogs with their latest content.
+Returns a list of all blogs.
 
 *   **URL**: `/blogs`
 *   **Method**: `GET`
@@ -49,8 +49,6 @@ Returns a list of all blogs with their latest content.
       "slug": "my-first-post",
       "status": "public",
       "content": "This is the content.",
-      "current_version": 2,
-      "revisions_count": 2,
       "created_at": "2026-01-13T10:00:00Z",
       "updated_at": "2026-01-13T11:00:00Z"
     }
@@ -60,7 +58,7 @@ Returns a list of all blogs with their latest content.
 
 ### 2. Create Blog
 
-Creates a new blog. Automatically creates the first revision (Version 1).
+Creates a new blog.
 
 *   **URL**: `/blogs`
 *   **Method**: `POST`
@@ -72,8 +70,7 @@ Creates a new blog. Automatically creates the first revision (Version 1).
     "title": "New Blog Post",
     "slug": "new-blog-post",
     "status": "draft",
-    "content": "Initial draft content.",
-    "note": "First draft"
+    "content": "Initial draft content."
   }
 }
 ```
@@ -94,17 +91,14 @@ Retrieves a single blog by ID.
     "id": 1,
     "title": "New Blog Post",
     "content": "Initial draft content.",
-    "current_version": 1,
     ...
   }
 }
 ```
 
-### 4. Update Blog
+### 4. Update Blog Metadata
 
-Updates a blog.
-*   If `content` is changed, a **new revision** is created automatically.
-*   If only metadata (`title`, `status`, `slug`) is changed, no new revision is created.
+Updates a blog's metadata (title, slug, status, tags).
 
 *   **URL**: `/blogs/:id`
 *   **Method**: `PUT`
@@ -114,16 +108,31 @@ Updates a blog.
 {
   "blog": {
     "title": "Updated Title",
-    "content": "This is new content.",
     "status": "public",
-    "note": "Ready for publish"
+    "tags": "tech,elixir"
   }
 }
 ```
 
 *   **Response**: `200 OK`
 
-### 5. Delete Blog
+### 5. Update Blog Content
+
+Updates a blog's content.
+
+*   **URL**: `/blogs/:id/content`
+*   **Method**: `PUT`
+*   **Payload**:
+
+```json
+{
+  "content": "This is new content."
+}
+```
+
+*   **Response**: `200 OK`
+
+### 6. Delete Blog
 
 Deletes a blog and all its associated revisions.
 
@@ -131,7 +140,7 @@ Deletes a blog and all its associated revisions.
 *   **Method**: `DELETE`
 *   **Response**: `204 No Content`
 
-### 6. List Revisions
+### 7. List Revisions
 
 Get the revision history for a specific blog.
 
@@ -145,25 +154,31 @@ Get the revision history for a specific blog.
     {
       "id": 2,
       "version": 2,
-      "content": "This is new content.",
-      "note": "Ready for publish",
-      "created_at": "..."
-    },
-    {
-      "id": 1,
-      "version": 1,
-      "content": "Initial draft content.",
-      "note": "First draft",
+      "content": "Old content version 2",
+      "note": "Backup",
       "created_at": "..."
     }
   ]
 }
 ```
 
-### 7. Get Revision
+### 8. Create Revision
 
-Get details of a specific revision.
+Creates a new revision (snapshot) for a blog.
 
-*   **URL**: `/blogs/:id/revisions/:revision_id`
-*   **Method**: `GET`
-*   **Response**: `200 OK`
+*   **URL**: `/blogs/:id/revisions`
+*   **Method**: `POST`
+*   **Payload**:
+
+```json
+{
+  "revision": {
+    "content": "Content to save as revision",
+    "version": 3,
+    "note": "Backup before major rewrite"
+  }
+}
+```
+
+*   **Response**: `201 Created`
+

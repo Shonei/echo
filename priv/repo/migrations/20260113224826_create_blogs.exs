@@ -11,6 +11,9 @@ defmodule Echo.Repo.Migrations.CreateBlogs do
       add :cover_image, :string
       add :description, :string
 
+      add :content, :text
+      add :tags, :string
+
       timestamps(type: :utc_datetime)
     end
 
