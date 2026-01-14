@@ -6,6 +6,10 @@ defmodule Echo.Repo.Migrations.CreateBlogs do
       add :title, :string
       add :slug, :string
       add :status, :string
+      add :icon, :string
+      add :background_image, :string
+      add :cover_image, :string
+      add :description, :string
 
       timestamps(type: :utc_datetime)
     end

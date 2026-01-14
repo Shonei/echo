@@ -19,12 +19,12 @@ defmodule Echo.Content do
   end
 
   @doc """
-  Gets a single blog with its revisions.
+  Gets a single blog with its published revision content.
   """
   def get_blog!(id) do
     Blog
     |> Repo.get!(id)
-    |> Repo.preload(:revisions)
+    |> Repo.preload(:revision)
   end
 
   @doc """
@@ -33,24 +33,36 @@ defmodule Echo.Content do
   def create_blog(attrs) do
     Repo.transaction(fn ->
       blog_changeset = Blog.changeset(%Blog{}, attrs)
-      
+
       case Repo.insert(blog_changeset) do
         {:ok, blog} ->
           content = Map.get(attrs, "content") || Map.get(attrs, :content) || "Start writing..."
           note = Map.get(attrs, "note") || Map.get(attrs, :note) || "Initial draft"
-          
+
           revision_attrs = %{
             content: content,
             note: note,
             version: 1,
             blog_id: blog.id
           }
-          
+
           case create_revision(revision_attrs) do
-            {:ok, _revision} -> blog
-            {:error, changeset} -> Repo.rollback(changeset)
+            {:ok, revision} ->
+              # Update the blog with the revision_id
+              {:ok, blog} =
+                blog
+                |> Blog.changeset(%{revision_id: revision.id})
+                |> Repo.update()
+
+              # Return the blog with the revision preloaded
+              %{blog | revision: revision}
+
+            {:error, changeset} ->
+              Repo.rollback(changeset)
           end
-        {:error, changeset} -> Repo.rollback(changeset)
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
       end
     end)
   end
@@ -73,33 +85,44 @@ defmodule Echo.Content do
     Repo.transaction(fn ->
       # Update Blog metadata
       blog_changeset = Blog.changeset(blog, attrs)
-      
-      updated_blog = case Repo.update(blog_changeset) do
-        {:ok, b} -> b
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
+
+      updated_blog =
+        case Repo.update(blog_changeset) do
+          {:ok, b} -> b
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
 
       # Check for content update
       new_content = Map.get(attrs, "content") || Map.get(attrs, :content)
-      
+
       if new_content do
         latest_revision = get_latest_revision(blog)
         current_content = if latest_revision, do: latest_revision.content, else: ""
-        
+
         if new_content != current_content do
           new_version = if latest_revision, do: latest_revision.version + 1, else: 1
-          note = Map.get(attrs, "note") || Map.get(attrs, :note) 
-          
+          note = Map.get(attrs, "note") || Map.get(attrs, :note)
+
           revision_attrs = %{
             content: new_content,
             version: new_version,
             blog_id: blog.id,
             note: note
           }
-          
+
           case create_revision(revision_attrs) do
-            {:ok, _} -> updated_blog
-            {:error, changeset} -> Repo.rollback(changeset)
+            {:ok, revision} ->
+              # Update the blog with the new revision_id
+              {:ok, final_blog} =
+                updated_blog
+                |> Blog.changeset(%{revision_id: revision.id})
+                |> Repo.update()
+
+              # Return blog with preloaded revision
+              %{final_blog | revision: revision}
+
+            {:error, changeset} ->
+              Repo.rollback(changeset)
           end
         else
           updated_blog
@@ -141,7 +164,6 @@ defmodule Echo.Content do
     Blog.changeset(blog, attrs)
   end
 
-  
   @doc """
   Returns the list of blog_revisions.
 

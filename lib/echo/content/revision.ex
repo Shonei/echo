@@ -6,6 +6,7 @@ defmodule Echo.Content.Revision do
     field :content, :string
     field :note, :string
     field :version, :integer
+
     belongs_to :blog, Echo.Content.Blog
 
     timestamps(type: :utc_datetime)
