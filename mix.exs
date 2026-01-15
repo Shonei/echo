@@ -61,7 +61,8 @@ defmodule Echo.MixProject do
       {:ecto_sqlite3_extras, "~> 1.2.0"},
       {:bcrypt_elixir, "~> 3.0"},
       {:httpoison, "~> 2.0"},
-      {:ex_llm, "~> 0.8.1"}
+      {:ex_llm, "~> 0.8.1"},
+      {:cors_plug, "~> 3.0"}
     ]
   end
 

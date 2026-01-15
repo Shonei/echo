@@ -25,3 +25,8 @@ config :echo,
 
   # Axiom API URL (use https://api.eu.axiom.co for EU region)
   axiom_url: "https://api.axiom.co"
+
+config :cors_plug,
+  origin: [~r/^https?:\/\/.*\.shonei\.me$/],
+  max_age: 86400,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
