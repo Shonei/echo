@@ -19,6 +19,11 @@ defmodule EchoWeb.Router do
     plug EchoWeb.Plugs.AcceptAny
   end
 
+  pipeline :assets do
+    # Accept any content type for asset uploads
+    plug EchoWeb.Plugs.AcceptAny
+  end
+
   scope "/", EchoWeb do
     pipe_through :browser
 
@@ -64,6 +69,14 @@ defmodule EchoWeb.Router do
       put "/content", BlogController, :update_content
       resources "/revisions", RevisionController, only: [:index, :create]
     end
+  end
+
+  # Assets API - handles binary uploads/downloads with any content type
+  scope "/api/v1/assets", EchoWeb do
+    pipe_through :assets
+
+    get "/*path", AssetController, :show
+    put "/*path", AssetController, :update
   end
 
   scope "/api/v1", EchoWeb do
