@@ -83,3 +83,10 @@ config :echo,
 
 config :echo,
   gemini_api_key: "AIzaSyDYyMIkKIk8C5zrp4zBZ628KADRANnvaK8"
+
+# S3-compatible storage client configuration for development
+config :echo, Echo.Storage.S3Client,
+  endpoint: "https://storage.railway.app",
+  region: "auto",
+  bucket: "resilient-trough-ugrud5hg",
+  access_key_id: "tid_GAqRSGEvlLLiKIikiSDPnaPKforATcHPojFaePCBBGNOHwafJJ"

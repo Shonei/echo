@@ -30,3 +30,10 @@ config :cors_plug,
   origin: [~r/^https?:\/\/.*\.shonei\.me$/],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+
+# S3-compatible storage client configuration for production
+config :echo, Echo.Storage.S3Client,
+  endpoint: System.get_env("S3_ENDPOINT"),
+  region: System.get_env("S3_REGION") || "auto",
+  bucket: System.get_env("S3_BUCKET"),
+  access_key_id: System.get_env("S3_ACCESS_KEY_ID")

@@ -27,6 +27,12 @@ if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password
 end
 
+# S3 client secret access key (used in all environments)
+# The secret is always loaded from environment variable for security
+if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do
+  config :echo, Echo.Storage.S3Client, secret_access_key: s3_secret
+end
+
 if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||
