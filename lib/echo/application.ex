@@ -63,10 +63,20 @@ defmodule Echo.Application do
   defp s3_client_child do
     config = Application.get_env(:echo, Echo.Storage.S3Client, [])
 
-    if Keyword.get(config, :endpoint) && Keyword.get(config, :bucket) do
+    has_endpoint = Keyword.get(config, :endpoint)
+    has_bucket = Keyword.get(config, :bucket)
+    has_access_key_id = Keyword.get(config, :access_key_id)
+
+    has_secret_access_key =
+      System.get_env("S3_SECRET_ACCESS_KEY") || Keyword.get(config, :secret_access_key)
+
+    if has_endpoint && has_bucket && has_access_key_id && has_secret_access_key do
       [Echo.Storage.S3Client]
     else
-      Logger.debug("S3 client disabled - endpoint or bucket not configured")
+      Logger.debug(
+        "S3 client disabled - missing required configuration (endpoint, bucket, access_key_id, or secret_access_key)"
+      )
+
       []
     end
   end

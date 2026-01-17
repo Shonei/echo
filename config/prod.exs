@@ -9,9 +9,9 @@ config :echo, EchoWeb.Endpoint, cache_static_manifest: "priv/static/cache_manife
 
 # Do not print debug messages in production
 config :logger, level: :info
+config :phoenix, :logger, false
 
 # Enable dev routes for dashboard and mailbox
-config :echo, dev_routes: true
 config :echo, dev_routes: true
 
 config :echo,

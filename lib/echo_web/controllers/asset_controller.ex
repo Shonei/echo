@@ -81,48 +81,62 @@ defmodule EchoWeb.AssetController do
 
     reference_id =
       case Map.get(params, "reference_id") do
-        nil -> nil
-        id when is_binary(id) -> String.to_integer(id)
-        id when is_integer(id) -> id
+        nil ->
+          nil
+
+        id when is_binary(id) ->
+          case Integer.parse(id) do
+            {int_id, ""} -> int_id
+            _ -> :invalid
+          end
+
+        id when is_integer(id) ->
+          id
       end
 
-    opts =
-      []
-      |> maybe_add_opt(:reference_type, reference_type)
-      |> maybe_add_opt(:reference_id, reference_id)
+    if reference_id == :invalid do
+      conn
+      |> put_status(:bad_request)
+      |> json(%{error: "reference_id must be a valid integer"})
+    else
+      opts =
+        []
+        |> maybe_add_opt(:reference_type, reference_type)
+        |> maybe_add_opt(:reference_id, reference_id)
 
-    case Assets.upload_asset(path, body, content_type, opts) do
-      {:ok, asset} ->
-        conn
-        |> put_status(:ok)
-        |> json(%{
-          data: %{
-            id: asset.id,
-            name: asset.name,
-            url: asset.url,
-            content_type: asset.content_type,
-            reference_type: asset.reference_type,
-            reference_id: asset.reference_id
-          }
-        })
+      case Assets.upload_asset(path, body, content_type, opts) do
+        {:ok, asset} ->
+          conn
+          |> put_status(:ok)
+          |> json(%{
+            data: %{
+              id: asset.id,
+              name: asset.name,
+              url: asset.url,
+              content_type: asset.content_type,
+              reference_type: asset.reference_type,
+              reference_id: asset.reference_id
+            }
+          })
 
-      {:error, :reference_mismatch} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          error:
-            "Asset already exists with different reference. Cannot overwrite an asset belonging to a different reference."
-        })
+        {:error, :reference_mismatch} ->
+          conn
+          |> put_status(:conflict)
+          |> json(%{
+            error:
+              "Asset already exists with different reference. Cannot overwrite an asset belonging to a different reference."
+          })
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{error: format_changeset_errors(changeset)})
+        {:error, %Ecto.Changeset{} = changeset} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{error: format_changeset_errors(changeset)})
 
-      {:error, reason} ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "Failed to upload asset: #{inspect(reason)}"})
+        {:error, reason} ->
+          conn
+          |> put_status(:internal_server_error)
+          |> json(%{error: "Failed to upload asset: #{inspect(reason)}"})
+      end
     end
   end
 
