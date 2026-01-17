@@ -93,9 +93,33 @@ defmodule Echo.Storage.Assets do
     reference_type = Keyword.get(opts, :reference_type)
     reference_id = Keyword.get(opts, :reference_id)
 
-    # prepend ID to path if reference_id is present
-    path = if reference_id, do: "#{reference_id}/#{path}", else: path
+    # Check if asset already exists with this path
+    case get_asset_by_path(path) do
+      nil ->
+        do_upload_asset(path, body, content_type, reference_type, reference_id)
 
+      existing_asset ->
+        # Reject if references don't match to prevent accidental overwrites
+        if references_match?(existing_asset, reference_type, reference_id) do
+          do_upload_asset(path, body, content_type, reference_type, reference_id, existing_asset)
+        else
+          {:error, :reference_mismatch}
+        end
+    end
+  end
+
+  defp references_match?(asset, reference_type, reference_id) do
+    asset.reference_type == reference_type and asset.reference_id == reference_id
+  end
+
+  defp do_upload_asset(
+         path,
+         body,
+         content_type,
+         reference_type,
+         reference_id,
+         existing_asset \\ nil
+       ) do
     case S3Client.upload_object(path, body, content_type) do
       :ok ->
         url = build_asset_url(path)
@@ -108,16 +132,12 @@ defmodule Echo.Storage.Assets do
           reference_id: reference_id
         }
 
-        # Check if asset already exists with this path
-        case get_asset_by_path(path) do
-          nil ->
-            create_asset(attrs)
-
-          existing_asset ->
-            # Update existing asset
-            existing_asset
-            |> Asset.changeset(attrs)
-            |> Repo.update()
+        if existing_asset do
+          existing_asset
+          |> Asset.changeset(attrs)
+          |> Repo.update()
+        else
+          create_asset(attrs)
         end
 
       {:error, reason} ->

@@ -4,8 +4,40 @@ defmodule EchoWeb.AssetController do
   alias Echo.Storage.Assets
 
   @doc """
+  GET /api/v1/assets
+
+  Returns a list of all assets with optional filtering.
+  Query params: reference_type, reference_id
+  """
+  def index(conn, params) do
+    opts =
+      []
+      |> maybe_add_opt(:reference_type, Map.get(params, "reference_type"))
+      |> maybe_add_opt(:reference_id, parse_integer(Map.get(params, "reference_id")))
+
+    assets = Assets.list_assets(opts)
+
+    conn
+    |> put_status(:ok)
+    |> json(%{
+      data:
+        Enum.map(assets, fn asset ->
+          %{
+            id: asset.id,
+            name: asset.name,
+            url: asset.url,
+            content_type: asset.content_type,
+            reference_type: asset.reference_type,
+            reference_id: asset.reference_id,
+            inserted_at: asset.inserted_at
+          }
+        end)
+    })
+  end
+
+  @doc """
   GET /api/v1/assets/*path
-  
+
   Returns the asset with correct content type and CDN caching headers.
   """
   def show(conn, %{"path" => path_parts}) do
@@ -33,7 +65,7 @@ defmodule EchoWeb.AssetController do
 
   @doc """
   PUT /api/v1/assets/*path
-  
+
   Uploads an asset. Content type is determined from file extension.
   Optional query params: reference_type, reference_id
   """
@@ -72,6 +104,14 @@ defmodule EchoWeb.AssetController do
             reference_type: asset.reference_type,
             reference_id: asset.reference_id
           }
+        })
+
+      {:error, :reference_mismatch} ->
+        conn
+        |> put_status(:conflict)
+        |> json(%{
+          error:
+            "Asset already exists with different reference. Cannot overwrite an asset belonging to a different reference."
         })
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -130,6 +170,10 @@ defmodule EchoWeb.AssetController do
   defp maybe_add_opt(opts, _key, nil), do: opts
   defp maybe_add_opt(opts, key, value), do: Keyword.put(opts, key, value)
 
+  defp parse_integer(nil), do: nil
+  defp parse_integer(value) when is_integer(value), do: value
+  defp parse_integer(value) when is_binary(value), do: String.to_integer(value)
+
   defp format_changeset_errors(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
@@ -138,4 +182,3 @@ defmodule EchoWeb.AssetController do
     end)
   end
 end
-

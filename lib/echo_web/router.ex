@@ -2,6 +2,12 @@ defmodule EchoWeb.Router do
   use EchoWeb, :router
 
   pipeline :browser do
+    plug Plug.Parsers,
+      parsers: [:urlencoded, :multipart, :json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 8_000_000
+
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
@@ -11,6 +17,12 @@ defmodule EchoWeb.Router do
   end
 
   pipeline :api do
+    plug Plug.Parsers,
+      parsers: [:urlencoded, :multipart, :json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 8_000_000
+
     plug :accepts, ["json"]
   end
 
@@ -69,6 +81,9 @@ defmodule EchoWeb.Router do
       put "/content", BlogController, :update_content
       resources "/revisions", RevisionController, only: [:index, :create]
     end
+
+    # List assets endpoint (uses JSON parsing)
+    get "/assets", AssetController, :index
   end
 
   # Assets API - handles binary uploads/downloads with any content type
