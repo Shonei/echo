@@ -20,8 +20,8 @@ defmodule Echo.Application do
         {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Echo.PubSub},
         Echo.RequestCache,
-        # Start a worker by calling: Echo.Worker.start_link(arg)
-        # {Echo.Worker, arg},
+        # Cleanup job for old HTTP requests
+        Echo.Requests.RequestCleanupJob,
         # Start to serve requests, typically the last entry
         EchoWeb.Endpoint
       ] ++ axiom_logger_child() ++ s3_client_child()
