@@ -41,6 +41,8 @@ defmodule EchoWeb.Router do
     plug EchoWeb.Plugs.AcceptAny
     # Rate limit: 1 upload per 5 seconds per IP
     plug EchoWeb.Plugs.RateLimit, interval_ms: 5000
+    # Require user authentication
+    plug EchoWeb.Plugs.UserAuth
   end
 
   scope "/", EchoWeb do
@@ -64,6 +66,12 @@ defmodule EchoWeb.Router do
 
   scope "/api/v1", EchoWeb do
     pipe_through :api
+
+    # User authentication endpoints
+    post "/users", UserController, :create
+    get "/users", UserController, :index
+    post "/users/login", UserController, :login
+    post "/users/refresh", UserController, :refresh
 
     get "/chat/rooms", ChatController, :index
     get "/chat/:room/messages", ChatController, :messages

@@ -26,6 +26,11 @@ if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password
 end
 
+# JWT secret for token signing (required in production)
+if jwt_secret = System.get_env("JWT_SECRET") do
+  config :echo, :jwt_secret, jwt_secret
+end
+
 # S3 client secret access key (used in all environments)
 # The secret is always loaded from environment variable for security
 if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do

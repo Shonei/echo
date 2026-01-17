@@ -80,7 +80,8 @@ config :phoenix_live_view,
 
 # Disable Axiom logging in development
 config :echo,
-  axiom_enabled: false
+  axiom_enabled: false,
+  jwt_secret: "dev_jwt_secret_change_in_production_32chars"
 
 # S3-compatible storage client configuration for development
 config :echo, Echo.Storage.S3Client,
