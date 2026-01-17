@@ -96,6 +96,24 @@ defmodule Echo.Requests do
   end
 
   @doc """
+  Deletes all requests older than the specified number of days.
+
+  Returns the number of deleted requests.
+
+  ## Examples
+
+      iex> delete_requests_older_than_days(2)
+      {10, nil}
+
+  """
+  def delete_requests_older_than_days(days) when is_integer(days) and days > 0 do
+    cutoff = DateTime.utc_now() |> DateTime.add(-days, :day)
+
+    from(r in Request, where: r.inserted_at < ^cutoff)
+    |> Repo.delete_all()
+  end
+
+  @doc """
   Returns an `%Ecto.Changeset{}` for tracking request changes.
 
   ## Examples
