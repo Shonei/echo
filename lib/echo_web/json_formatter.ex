@@ -1,5 +1,7 @@
 defmodule EchoWeb.JSONFormatter do
   def format(level, message, timestamp, metadata) do
+    IO.inspect(metadata)
+
     %{
       timestamp: format_timestamp(timestamp),
       level: level,

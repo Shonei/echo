@@ -20,8 +20,7 @@ if System.get_env("PHX_SERVER") do
   config :echo, EchoWeb.Endpoint, server: true
 end
 
-config :logger, :default_handler,
-  formatter: LoggerJSON.Formatters.Basic.new(metadata: [:request_id, :mfa, :file, :line])
+config :logger, :default_handler, formatter: LoggerJSON.Formatters.Basic.new(metadata: :all)
 
 if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password

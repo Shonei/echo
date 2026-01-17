@@ -12,6 +12,7 @@ config :logger, level: :info
 
 # Enable dev routes for dashboard and mailbox
 config :echo, dev_routes: true
+config :echo, dev_routes: true
 
 config :echo,
   # Enable Axiom logging

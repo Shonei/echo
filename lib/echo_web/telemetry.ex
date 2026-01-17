@@ -23,7 +23,28 @@ defmodule EchoWeb.Telemetry do
         %{}
       )
 
+    :ok =
+      :telemetry.attach(
+        "echo-router-handler_custom",
+        [:phoenix, :endpoint, :stop],
+        &log_http_request/4,
+        %{}
+      )
+
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def log_http_request(_event, measurements, metadata, _config) do
+    path = Map.get(metadata.conn, :request_path)
+    method = Map.get(metadata.conn, :method)
+    status = Map.get(metadata.conn, :status)
+
+    Logger.info("HTTP Request", %{
+      duration: Map.get(measurements, :duration),
+      path: path,
+      method: method,
+      status: status
+    })
   end
 
   def handle_event([:echo, :repo, :query], measurements, metadata, _config) do

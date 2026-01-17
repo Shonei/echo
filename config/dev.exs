@@ -8,6 +8,7 @@ config :echo, Echo.Repo,
   show_sensitive_data_on_connection_error: true
 
 config :logger, level: :info
+config :phoenix, :logger, false
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -80,9 +81,6 @@ config :phoenix_live_view,
 # Disable Axiom logging in development
 config :echo,
   axiom_enabled: false
-
-config :echo,
-  gemini_api_key: "AIzaSyDYyMIkKIk8C5zrp4zBZ628KADRANnvaK8"
 
 # S3-compatible storage client configuration for development
 config :echo, Echo.Storage.S3Client,
