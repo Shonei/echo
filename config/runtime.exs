@@ -20,11 +20,16 @@ if System.get_env("PHX_SERVER") do
   config :echo, EchoWeb.Endpoint, server: true
 end
 
-config :logger, :default_handler,
-  formatter: LoggerJSON.Formatters.Basic.new(metadata: [:request_id, :mfa, :file, :line])
+config :logger, :default_handler, formatter: LoggerJSON.Formatters.Basic.new(metadata: :all)
 
 if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password
+end
+
+# S3 client secret access key (used in all environments)
+# The secret is always loaded from environment variable for security
+if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do
+  config :echo, Echo.Storage.S3Client, secret_access_key: s3_secret
 end
 
 if config_env() == :prod do

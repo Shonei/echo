@@ -9,6 +9,7 @@ config :echo, EchoWeb.Endpoint, cache_static_manifest: "priv/static/cache_manife
 
 # Do not print debug messages in production
 config :logger, level: :info
+config :phoenix, :logger, false
 
 # Enable dev routes for dashboard and mailbox
 config :echo, dev_routes: true
@@ -30,3 +31,10 @@ config :cors_plug,
   origin: [~r/^https?:\/\/.*\.shonei\.me$/],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
+
+# S3-compatible storage client configuration for production
+config :echo, Echo.Storage.S3Client,
+  endpoint: System.get_env("S3_ENDPOINT"),
+  region: System.get_env("S3_REGION") || "auto",
+  bucket: System.get_env("S3_BUCKET"),
+  access_key_id: System.get_env("S3_ACCESS_KEY_ID")

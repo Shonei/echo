@@ -24,7 +24,7 @@ defmodule Echo.Application do
         # {Echo.Worker, arg},
         # Start to serve requests, typically the last entry
         EchoWeb.Endpoint
-      ] ++ axiom_logger_child()
+      ] ++ axiom_logger_child() ++ s3_client_child()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -56,6 +56,27 @@ defmodule Echo.Application do
           []
       end
     else
+      []
+    end
+  end
+
+  defp s3_client_child do
+    config = Application.get_env(:echo, Echo.Storage.S3Client, [])
+
+    has_endpoint = Keyword.get(config, :endpoint)
+    has_bucket = Keyword.get(config, :bucket)
+    has_access_key_id = Keyword.get(config, :access_key_id)
+
+    has_secret_access_key =
+      System.get_env("S3_SECRET_ACCESS_KEY") || Keyword.get(config, :secret_access_key)
+
+    if has_endpoint && has_bucket && has_access_key_id && has_secret_access_key do
+      [Echo.Storage.S3Client]
+    else
+      Logger.debug(
+        "S3 client disabled - missing required configuration (endpoint, bucket, access_key_id, or secret_access_key)"
+      )
+
       []
     end
   end

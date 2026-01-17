@@ -2,6 +2,12 @@ defmodule EchoWeb.Router do
   use EchoWeb, :router
 
   pipeline :browser do
+    plug Plug.Parsers,
+      parsers: [:urlencoded, :multipart, :json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 8_000_000
+
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
@@ -11,12 +17,30 @@ defmodule EchoWeb.Router do
   end
 
   pipeline :api do
+    plug Plug.Parsers,
+      parsers: [:urlencoded, :multipart, :json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 8_000_000
+
     plug :accepts, ["json"]
   end
 
   pipeline :echo do
     # Accept any content type - bypass format checking
     plug EchoWeb.Plugs.AcceptAny
+  end
+
+  pipeline :assets do
+    # Accept any content type for asset uploads
+    plug EchoWeb.Plugs.AcceptAny
+  end
+
+  pipeline :asset_upload do
+    # Accept any content type for asset uploads
+    plug EchoWeb.Plugs.AcceptAny
+    # Rate limit: 1 upload per 5 seconds per IP
+    plug EchoWeb.Plugs.RateLimit, interval_ms: 5000
   end
 
   scope "/", EchoWeb do
@@ -64,6 +88,21 @@ defmodule EchoWeb.Router do
       put "/content", BlogController, :update_content
       resources "/revisions", RevisionController, only: [:index, :create]
     end
+
+    # List assets endpoint (uses JSON parsing)
+    get "/assets", AssetController, :index
+  end
+
+  # Assets API - handles binary uploads/downloads with any content type
+  scope "/api/v1/assets", EchoWeb do
+    pipe_through :assets
+    get "/*path", AssetController, :show
+  end
+
+  # Asset uploads with rate limiting (1 upload per 5 seconds)
+  scope "/api/v1/assets", EchoWeb do
+    pipe_through :asset_upload
+    put "/*path", AssetController, :update
   end
 
   scope "/api/v1", EchoWeb do
