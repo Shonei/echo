@@ -17,23 +17,53 @@ defmodule EchoWeb.BlogController do
     with {:ok, %Blog{} = blog} <- Content.create_blog(blog_params) do
       conn
       |> put_status(:created)
-      |> put_resp_header("location", ~p"/api/v1/blogs/#{blog}")
       |> render(:show, blog: blog)
     end
   end
 
   def show(conn, %{"id" => id}) do
-    blog = Content.get_blog!(id)
+    blog = Content.get_blog_by_id_or_slug!(id)
     render(conn, :show, blog: blog)
   end
 
   def update(conn, %{"id" => id, "blog" => blog_params}) do
     blog = Content.get_blog!(id)
 
-    with {:ok, %Blog{} = blog} <- Content.update_blog_metadata(blog, blog_params) do
+    with {:ok, validated_params} <- validate_and_convert_tags(blog_params),
+         {:ok, %Blog{} = blog} <- Content.update_blog_metadata(blog, validated_params) do
       render(conn, :show, blog: blog)
     end
   end
+
+  # Validates that tags are either an empty map or a map of string/string pairs,
+  # then converts to a byte array (JSON encoded binary) for storage
+  defp validate_and_convert_tags(blog_params) do
+    case Map.get(blog_params, "tags") do
+      nil ->
+        {:ok, blog_params}
+
+      tags when is_map(tags) ->
+        if valid_tags_map?(tags) do
+          {:ok, Map.put(blog_params, "tags", Jason.encode!(tags))}
+        else
+          {:error, :invalid_tags}
+        end
+
+      _invalid ->
+        {:error, :invalid_tags}
+    end
+  end
+
+  # Tags must be an empty map or a map where all keys and values are strings
+  defp valid_tags_map?(tags) when tags == %{}, do: true
+
+  defp valid_tags_map?(tags) when is_map(tags) do
+    Enum.all?(tags, fn {key, value} ->
+      is_binary(key) and is_binary(value)
+    end)
+  end
+
+  defp valid_tags_map?(_), do: false
 
   def update_content(conn, %{"blog_id" => blog_id, "content" => content}) do
     blog = Content.get_blog!(blog_id)

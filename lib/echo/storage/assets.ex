@@ -123,10 +123,12 @@ defmodule Echo.Storage.Assets do
     case S3Client.upload_object(path, body, content_type) do
       :ok ->
         url = build_asset_url(path)
+        url_suffix = build_url_suffix(path)
 
         attrs = %{
           name: path,
           url: url,
+          url_suffix: url_suffix,
           content_type: content_type,
           reference_type: reference_type,
           reference_id: reference_id
@@ -161,6 +163,15 @@ defmodule Echo.Storage.Assets do
     endpoint = Keyword.get(config, :endpoint, "")
     bucket = Keyword.get(config, :bucket, "")
     "#{endpoint}/#{bucket}/#{path}"
+  end
+
+  # make sure path starts with /
+  defp build_url_suffix(path) do
+    if String.starts_with?(path, "/") do
+      path
+    else
+      "/#{path}"
+    end
   end
 
   defp extract_path_from_url(url) do
