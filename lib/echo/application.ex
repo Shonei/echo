@@ -22,6 +22,8 @@ defmodule Echo.Application do
         Echo.RequestCache,
         # Cleanup job for old HTTP requests
         Echo.Requests.RequestCleanupJob,
+        # Rate limiting ETS table owner
+        EchoWeb.Plugs.RateLimit.TableOwner,
         # Start to serve requests, typically the last entry
         EchoWeb.Endpoint
       ] ++ axiom_logger_child() ++ s3_client_child()

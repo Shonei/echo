@@ -7,18 +7,32 @@ defmodule EchoWeb.Plugs.RateLimit do
       plug EchoWeb.Plugs.RateLimit, interval_ms: 5000
 
   This will limit requests to 1 per 5 seconds per IP address.
+
+  Note: The ETS table must be created at application startup by calling
+  `EchoWeb.Plugs.RateLimit.create_table/0` or by adding
+  `EchoWeb.Plugs.RateLimit.TableOwner` to your supervision tree.
   """
 
   import Plug.Conn
 
   @table_name :rate_limit_requests
 
-  def init(opts) do
-    # Ensure ETS table exists
-    if :ets.whereis(@table_name) == :undefined do
-      :ets.new(@table_name, [:set, :public, :named_table])
+  defmodule TableOwner do
+    @moduledoc false
+    use GenServer
+
+    def start_link(_opts) do
+      GenServer.start_link(__MODULE__, [], name: __MODULE__)
     end
 
+    @impl true
+    def init(_) do
+      table = :ets.new(:rate_limit_requests, [:set, :public, :named_table])
+      {:ok, table}
+    end
+  end
+
+  def init(opts) do
     interval_ms = Keyword.get(opts, :interval_ms, 5000)
     %{interval_ms: interval_ms}
   end
@@ -35,7 +49,10 @@ defmodule EchoWeb.Plugs.RateLimit do
           conn
           |> put_resp_content_type("application/json")
           |> put_resp_header("retry-after", Integer.to_string(retry_after_seconds))
-          |> send_resp(429, Jason.encode!(%{error: "Too many requests. Please wait before uploading again."}))
+          |> send_resp(
+            429,
+            Jason.encode!(%{error: "Too many requests. Please wait before uploading again."})
+          )
           |> halt()
         else
           :ets.insert(@table_name, {key, now})
@@ -66,4 +83,3 @@ defmodule EchoWeb.Plugs.RateLimit do
     {:upload_rate_limit, ip}
   end
 end
-
