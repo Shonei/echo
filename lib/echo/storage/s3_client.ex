@@ -166,6 +166,8 @@ defmodule Echo.Storage.S3Client do
     url = build_url(state, path)
     headers = sign_request(state, "PUT", path, body, [{"content-type", content_type}])
 
+    Logging.info("Uploading object to S3", %{url: url, headers: headers})
+
     case state.http_client.put(url, body, headers, timeout: 60_000, recv_timeout: 60_000) do
       {:ok, %{status_code: status}} when status in 200..299 ->
         :ok
