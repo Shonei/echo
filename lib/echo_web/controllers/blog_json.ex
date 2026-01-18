@@ -26,9 +26,20 @@ defmodule EchoWeb.BlogJSON do
       background_image: blog.background_image,
       cover_image: blog.cover_image,
       description: blog.description,
-      tags: blog.tags,
+      tags: parse_tags(blog.tags),
       created_at: blog.inserted_at,
       updated_at: blog.updated_at
     }
   end
+
+  defp parse_tags(nil), do: %{}
+
+  defp parse_tags(tags) when is_binary(tags) do
+    case Jason.decode(tags) do
+      {:ok, parsed} -> parsed
+      {:error, _} -> %{}
+    end
+  end
+
+  defp parse_tags(_), do: %{}
 end

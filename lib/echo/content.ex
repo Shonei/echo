@@ -24,6 +24,26 @@ defmodule Echo.Content do
   def get_blog!(id), do: Repo.get!(Blog, id)
 
   @doc """
+  Gets a single blog by ID or slug.
+
+  If the identifier is a numeric string, it will be treated as an ID.
+  Otherwise, it will be treated as a slug.
+
+  Raises `Ecto.NoResultsError` if the Blog does not exist.
+  """
+  def get_blog_by_id_or_slug!(identifier) do
+    case Integer.parse(identifier) do
+      {id, ""} ->
+        # It's a pure integer, look up by ID
+        Repo.get!(Blog, id)
+
+      _ ->
+        # It's a slug
+        Repo.get_by!(Blog, slug: identifier)
+    end
+  end
+
+  @doc """
   Creates a blog.
   """
   def create_blog(attrs \\ %{}) do

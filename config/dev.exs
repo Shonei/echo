@@ -88,3 +88,8 @@ config :echo, Echo.Storage.S3Client,
   region: "auto",
   bucket: "resilient-trough-ugrud5hg",
   access_key_id: "tid_GAqRSGEvlLLiKIikiSDPnaPKforATcHPojFaePCBBGNOHwafJJ"
+
+config :cors_plug,
+  origin: [~r/https?:\/\/localhost(:\d+)?$/],
+  max_age: 86400,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
