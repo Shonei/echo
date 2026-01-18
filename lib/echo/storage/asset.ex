@@ -1,7 +1,7 @@
 defmodule Echo.Storage.Asset do
   @moduledoc """
   Schema for storing asset metadata in the database.
-  
+
   Assets are files stored in S3 and can optionally be linked to other resources
   like blogs through reference_type and reference_id.
   """
@@ -11,6 +11,7 @@ defmodule Echo.Storage.Asset do
   schema "assets" do
     field :name, :string
     field :url, :string
+    field :url_suffix, :string
     field :content_type, :string
     field :reference_type, :string
     field :reference_id, :integer
@@ -21,8 +22,8 @@ defmodule Echo.Storage.Asset do
   @doc false
   def changeset(asset, attrs) do
     asset
-    |> cast(attrs, [:name, :url, :content_type, :reference_type, :reference_id])
-    |> validate_required([:name, :url, :content_type])
+    |> cast(attrs, [:name, :url, :url_suffix, :content_type, :reference_type, :reference_id])
+    |> validate_required([:name, :url, :url_suffix, :content_type])
     |> validate_reference()
   end
 
@@ -46,4 +47,3 @@ defmodule Echo.Storage.Asset do
     end
   end
 end
-

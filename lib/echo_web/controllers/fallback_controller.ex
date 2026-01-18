@@ -21,4 +21,12 @@ defmodule EchoWeb.FallbackController do
     |> put_view(html: EchoWeb.ErrorHTML, json: EchoWeb.ErrorJSON)
     |> render(:"404")
   end
+
+  # This clause handles invalid tags format errors.
+  def call(conn, {:error, :invalid_tags}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: EchoWeb.ErrorJSON)
+    |> json(%{errors: %{tags: ["must be an empty object or a map of string/string values"]}})
+  end
 end

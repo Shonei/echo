@@ -25,7 +25,7 @@ defmodule EchoWeb.AssetController do
           %{
             id: asset.id,
             name: asset.name,
-            url: asset.url,
+            url_suffix: asset.url_suffix,
             content_type: asset.content_type,
             reference_type: asset.reference_type,
             reference_id: asset.reference_id,
@@ -112,7 +112,7 @@ defmodule EchoWeb.AssetController do
             data: %{
               id: asset.id,
               name: asset.name,
-              url: asset.url,
+              url_suffix: asset.url_suffix,
               content_type: asset.content_type,
               reference_type: asset.reference_type,
               reference_id: asset.reference_id

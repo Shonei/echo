@@ -54,7 +54,7 @@ config :phoenix, :json_library, Jason
 
 # Configures CORS
 config :cors_plug,
-  origin: ["http://localhost:4000"],
+  origin: ["localhost"],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
 
