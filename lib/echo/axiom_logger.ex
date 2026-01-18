@@ -167,11 +167,18 @@ defmodule Echo.AxiomLogger do
   end
 
   defp format_metadata(metadata) when is_list(metadata) do
+    # First sanitize values in the keyword list before converting to map
+    # This handles cases where values are structs like Plug.Conn
     metadata
+    |> Enum.map(fn {key, value} -> {key, sanitize_value(value)} end)
     |> Enum.into(%{})
     # Remove internal fields
     |> Map.drop([:pid, :gl, :time])
-    |> sanitize_metadata()
+  end
+
+  defp format_metadata(%{__struct__: _} = metadata) do
+    # Handle structs by inspecting them
+    %{struct: inspect(metadata)}
   end
 
   defp format_metadata(metadata) when is_map(metadata) do
@@ -212,6 +219,11 @@ defmodule Echo.AxiomLogger do
 
   # Convert functions to strings
   defp sanitize_value(value) when is_function(value) do
+    inspect(value)
+  end
+
+  # Handle structs (like Plug.Conn) by inspecting them
+  defp sanitize_value(%{__struct__: _} = value) do
     inspect(value)
   end
 
