@@ -24,6 +24,8 @@ defmodule Echo.Application do
         Echo.Requests.RequestCleanupJob,
         # Rate limiting ETS table owner
         EchoWeb.Plugs.RateLimit.TableOwner,
+        # Auth User GenServer
+        Echo.AuthUser,
         # Start to serve requests, typically the last entry
         EchoWeb.Endpoint
       ] ++ axiom_logger_child() ++ s3_client_child()

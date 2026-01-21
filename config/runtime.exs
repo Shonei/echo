@@ -26,6 +26,19 @@ if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password
 end
 
+# Auth configuration
+# Only load if username and password are provided
+blogs_username = System.get_env("BLOGS_USERNAME")
+blogs_password = System.get_env("BLOGS_PASSWORD")
+blogs_auth_secret = System.get_env("BLOGS_AUTH_SECRET")
+
+if blogs_username && blogs_password do
+  config :echo, :auth,
+    username: blogs_username,
+    password: blogs_password,
+    secret: blogs_auth_secret || "basic_auth_secret_key_change_me"
+end
+
 # S3 client secret access key (used in all environments)
 # The secret is always loaded from environment variable for security
 if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do
