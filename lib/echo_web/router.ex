@@ -94,13 +94,14 @@ defmodule EchoWeb.Router do
     end
 
     resources "/blogs", BlogController, only: [:index, :show] do
-      resources "/revisions", RevisionController, only: [:index, :create]
+      resources "/revisions", RevisionController, only: [:index]
     end
 
     scope "/" do
       pipe_through :api_auth
       resources "/blogs", BlogController, only: [:create, :update, :delete]
       put "/blogs/:id/content", BlogController, :update_content
+      resources "/blogs/:blog_id/revisions", RevisionController, only: [:create]
     end
 
     # List assets endpoint (uses JSON parsing)

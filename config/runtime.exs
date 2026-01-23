@@ -36,7 +36,7 @@ if blogs_username && blogs_password do
   config :echo, :auth,
     username: blogs_username,
     password: blogs_password,
-    secret: blogs_auth_secret || "basic_auth_secret_key_change_me"
+    secret: blogs_auth_secret
 end
 
 # S3 client secret access key (used in all environments)

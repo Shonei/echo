@@ -17,10 +17,6 @@ defmodule EchoWeb.LoginController do
   end
 
   defp handle_login(conn, params, auth_config) do
-    # Support both JSON body and Basic Auth as per standard practices,
-    # though prompt mentioned "where the basic auth is submitted".
-    # We'll check Basic Auth header first, then params.
-
     expected_username = auth_config[:username]
     expected_password = auth_config[:password]
 
@@ -28,14 +24,21 @@ defmodule EchoWeb.LoginController do
       {u, p} when u == expected_username and p == expected_password ->
         # Generate Token
         signer = Joken.Signer.create("HS256", auth_config[:secret])
-        {:ok, token, _claims} = Joken.generate_and_sign(%{}, signer)
 
-        # Store in AuthUser
-        Echo.AuthUser.login(token, @ttl)
+        case Joken.generate_and_sign(%{}, signer) do
+          {:ok, token, _claims} ->
+            # Store in AuthUser
+            Echo.AuthUser.login(token, @ttl)
 
-        conn
-        |> put_status(:ok)
-        |> json(%{accessToken: token, ttl: @ttl})
+            conn
+            |> put_status(:ok)
+            |> json(%{accessToken: token, ttl: @ttl})
+
+          _ ->
+            conn
+            |> put_status(:internal_server_error)
+            |> json(%{error: "Failed to generate token"})
+        end
 
       _ ->
         conn
