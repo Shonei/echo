@@ -24,6 +24,13 @@ defmodule EchoWeb.Router do
       length: 8_000_000
 
     plug :accepts, ["json"]
+    plug :fetch_session
+  end
+
+  pipeline :api_auth do
+    plug :fetch_session
+    plug EchoWeb.Plugs.ExtractToken
+    plug EchoWeb.Plugs.ValidateToken
   end
 
   pipeline :echo do
@@ -65,6 +72,8 @@ defmodule EchoWeb.Router do
   scope "/api/v1", EchoWeb do
     pipe_through :api
 
+    post "/login", LoginController, :create
+
     get "/chat/rooms", ChatController, :index
     get "/chat/:room/messages", ChatController, :messages
     post "/chat/:room/messages", ChatController, :create_message
@@ -84,9 +93,15 @@ defmodule EchoWeb.Router do
       get "/sessions/:session_id/events", AuditController, :events
     end
 
-    resources "/blogs", BlogController, except: [:new, :edit] do
-      put "/content", BlogController, :update_content
-      resources "/revisions", RevisionController, only: [:index, :create]
+    resources "/blogs", BlogController, only: [:index, :show] do
+      resources "/revisions", RevisionController, only: [:index]
+    end
+
+    scope "/" do
+      pipe_through :api_auth
+      resources "/blogs", BlogController, only: [:create, :update, :delete]
+      put "/blogs/:id/content", BlogController, :update_content
+      resources "/blogs/:blog_id/revisions", RevisionController, only: [:create]
     end
 
     # List assets endpoint (uses JSON parsing)
@@ -101,7 +116,7 @@ defmodule EchoWeb.Router do
 
   # Asset uploads with rate limiting (1 upload per 5 seconds)
   scope "/api/v1/assets", EchoWeb do
-    pipe_through :asset_upload
+    pipe_through [:asset_upload, :api_auth]
     put "/*path", AssetController, :update
   end
 

@@ -62,7 +62,8 @@ defmodule Echo.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:httpoison, "~> 2.0"},
       {:ex_llm, "~> 0.8.1"},
-      {:cors_plug, "~> 3.0"}
+      {:cors_plug, "~> 3.0"},
+      {:joken, "~> 2.6"}
     ]
   end
 
