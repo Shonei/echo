@@ -11,9 +11,13 @@ defmodule Echo.Content do
 
   @doc """
   Returns the list of blogs.
+
+  Right now it only accepts an optional status filter.
   """
-  def list_blogs do
-    Repo.all(Blog)
+  def list_blogs(params \\ %{}) do
+    Blog
+    |> build_blog_search(params)
+    |> Repo.all()
   end
 
   @doc """
@@ -128,5 +132,15 @@ defmodule Echo.Content do
   """
   def change_revision(%Revision{} = revision, attrs \\ %{}) do
     Revision.changeset(revision, attrs)
+  end
+
+  defp build_blog_search(query, filters) do
+    Enum.reduce(filters, query, fn
+      {:status, status}, query when is_binary(status) ->
+        from r in query, where: r.status == ^status
+
+      _filter, query ->
+        query
+    end)
   end
 end
