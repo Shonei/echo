@@ -25,7 +25,14 @@ defmodule EchoWeb.LoginController do
         # Generate Token
         signer = Joken.Signer.create("HS256", auth_config[:secret])
 
-        case Joken.generate_and_sign(%{}, signer) do
+        case Joken.generate_and_sign(
+               %{},
+               %{
+                 "exp" =>
+                   DateTime.utc_now() |> DateTime.add(@ttl, :second) |> DateTime.to_iso8601()
+               },
+               signer
+             ) do
           {:ok, token, _claims} ->
             # Store in AuthUser
             Echo.AuthUser.login(token, @ttl)

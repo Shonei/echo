@@ -93,3 +93,8 @@ config :cors_plug,
   origin: [~r/https?:\/\/localhost(:\d+)?$/],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
+
+config :echo, :auth,
+  username: "admin",
+  password: "password",
+  secret: "secret"

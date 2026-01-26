@@ -100,7 +100,7 @@ defmodule EchoWeb.Router do
     scope "/" do
       pipe_through :api_auth
       resources "/blogs", BlogController, only: [:create, :update, :delete]
-      put "/blogs/:id/content", BlogController, :update_content
+      put "/blogs/:blog_id/content", BlogController, :update_content
       resources "/blogs/:blog_id/revisions", RevisionController, only: [:create]
     end
 

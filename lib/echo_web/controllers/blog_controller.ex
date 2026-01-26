@@ -6,8 +6,8 @@ defmodule EchoWeb.BlogController do
 
   action_fallback EchoWeb.FallbackController
 
-  def index(conn, _params) do
-    blogs = Content.list_blogs()
+  def index(conn, params) do
+    blogs = Content.list_blogs(build_blog_list_filters(params))
     render(conn, :index, blogs: blogs)
   end
 
@@ -33,6 +33,18 @@ defmodule EchoWeb.BlogController do
          {:ok, %Blog{} = blog} <- Content.update_blog_metadata(blog, validated_params) do
       render(conn, :show, blog: blog)
     end
+  end
+
+  defp build_blog_list_filters(params) do
+    filters = %{}
+
+    filters =
+      case Map.get(params, "status") do
+        status when status != nil and status != "" -> Map.put(filters, :status, status)
+        _ -> filters
+      end
+
+    filters
   end
 
   # Validates that tags are either an empty map or a map of string/string pairs,
