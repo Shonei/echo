@@ -1,6 +1,9 @@
 defmodule Echo.Logger do
   require Logger
 
+  # Capture Mix.env at compile time since Mix is not available in releases
+  @compile_env Mix.env() |> to_string()
+
   def info(message, labels \\ %{}) do
     Logger.info(message, format_metadata(labels))
   end
@@ -40,6 +43,6 @@ defmodule Echo.Logger do
   end
 
   defp get_environment do
-    Application.get_env(:echo, :environment, Mix.env() |> to_string())
+    Application.get_env(:echo, :environment, @compile_env)
   end
 end
