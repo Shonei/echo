@@ -10,6 +10,8 @@ defmodule Echo.Storage.Assets do
   alias Echo.Repo
   alias Echo.Storage.Asset
   alias Echo.Storage.S3Client
+  alias Vix.Vips.{Image, Operation}
+  require Logger
 
   @doc """
   Gets an asset by its storage path.
@@ -99,6 +101,8 @@ defmodule Echo.Storage.Assets do
         do_upload_asset(path, body, content_type, reference_type, reference_id)
 
       existing_asset ->
+        Logger.info("Existing asset: #{inspect(existing_asset)}")
+
         # Reject if references don't match to prevent accidental overwrites
         if references_match?(existing_asset, reference_type, reference_id) do
           do_upload_asset(path, body, content_type, reference_type, reference_id, existing_asset)
@@ -120,7 +124,7 @@ defmodule Echo.Storage.Assets do
          reference_id,
          existing_asset \\ nil
        ) do
-    case S3Client.upload_object(path, body, content_type) do
+    case upload_to_s3(path, body, content_type) do
       :ok ->
         url = build_asset_url(path)
         url_suffix = build_url_suffix(path)
@@ -147,16 +151,60 @@ defmodule Echo.Storage.Assets do
     end
   end
 
+  defp upload_to_s3(path, body, content_type) do
+    case content_type do
+      "image/" <> _ ->
+        case make_thumbnail_for_image(body) do
+          {:ok, thumbnail} ->
+            result = S3Client.upload_object("#{path}_thumbnail", thumbnail, "image/jpeg")
+            Logger.info("Thumbnail upload result: #{inspect(result)}")
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+
+    case S3Client.upload_object(path, body, content_type) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @doc """
   Gets the content of an asset from S3.
 
   Returns `{:ok, body, content_type}` on success or `{:error, reason}` on failure.
   """
   def get_asset_content(path) do
-    S3Client.get_object(path)
+    case S3Client.get_object(path) do
+      {:ok, body, content_type} ->
+        {:ok, body, content_type}
+
+      {:error, :not_found} ->
+        # If this is the thumbnail path, try to get the original
+        if String.ends_with?(path, "_thumbnail") do
+          get_asset_content(String.replace_suffix(path, "_thumbnail", ""))
+        else
+          {:error, :not_found}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   # Private helpers
+
+  # make a thumbnail for an image and return it as a jpeg
+  # returns {:ok, buffer} or {:error, reason}
+  defp make_thumbnail_for_image(body) do
+    with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, 300),
+         {:ok, buffer} <- Image.write_to_buffer(thumbnail, ".jpeg") do
+      {:ok, buffer}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   defp build_asset_url(path) do
     config = Application.get_env(:echo, Echo.Storage.S3Client, [])
