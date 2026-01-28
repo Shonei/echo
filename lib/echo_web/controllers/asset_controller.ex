@@ -2,6 +2,7 @@ defmodule EchoWeb.AssetController do
   use EchoWeb, :controller
 
   alias Echo.Storage.Assets
+  require Logger
 
   @doc """
   GET /api/v1/assets
@@ -72,6 +73,8 @@ defmodule EchoWeb.AssetController do
   def update(conn, %{"path" => path_parts} = params) do
     path = Enum.join(path_parts, "/")
     content_type = content_type_from_extension(path)
+
+    Logger.info("Uploading asset: #{path} with content type: #{content_type}")
 
     # Read raw body
     {:ok, body, conn} = Plug.Conn.read_body(conn)

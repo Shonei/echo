@@ -26,6 +26,8 @@ defmodule Echo.AxiomLogger do
   # 5 seconds
   @default_flush_interval 5_000
   @default_axiom_url "https://api.axiom.co"
+  # Capture Mix.env at compile time since Mix is not available in releases
+  @compile_env Mix.env() |> to_string()
 
   ## GenServer API
 
@@ -254,7 +256,7 @@ defmodule Echo.AxiomLogger do
   end
 
   defp get_environment do
-    Application.get_env(:echo, :environment, Mix.env() |> to_string())
+    Application.get_env(:echo, :environment, @compile_env)
   end
 
   defp add_to_buffer(log_entry, state) do
