@@ -177,11 +177,20 @@ defmodule Echo.Storage.Assets do
       if any_asset_exists_by_hashes?(hashes) do
         {:error, :already_exists}
       else
-        # Do all uploads and DB inserts within transaction
-        Repo.transaction(fn ->
-          Enum.map(generated_images, fn img ->
+        # First upload all images
+        upload_result =
+          Enum.reduce_while(generated_images, :ok, fn img, _acc ->
             case S3Client.upload_object(img.path, img.body, img.content_type) do
-              :ok ->
+              :ok -> {:cont, :ok}
+              {:error, reason} -> {:halt, {:error, reason}}
+            end
+          end)
+
+        case upload_result do
+          :ok ->
+            # After, update the DB in a transaction
+            Repo.transaction(fn ->
+              Enum.map(generated_images, fn img ->
                 create_asset_record!(
                   img.path,
                   img.content_type,
@@ -189,15 +198,11 @@ defmodule Echo.Storage.Assets do
                   reference_type,
                   reference_id
                 )
+              end)
+            end)
 
-              {:error, reason} ->
-                Repo.rollback({:s3_upload_failed, reason})
-            end
-          end)
-        end)
-        |> case do
-          {:ok, assets} -> {:ok, assets}
-          {:error, reason} -> {:error, reason}
+          {:error, reason} ->
+            {:error, {:s3_upload_failed, reason}}
         end
       end
     end
