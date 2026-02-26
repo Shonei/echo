@@ -42,7 +42,7 @@ defmodule Echo.Storage.S3Client do
       {:ok, body, "image/png"} = S3Client.get_object("images/photo.png")
   """
   def get_object(path) do
-    GenServer.call(__MODULE__, {:get_object, path})
+    GenServer.call(__MODULE__, {:get_object, path}, 30_000)
   end
 
   @doc """
@@ -68,7 +68,7 @@ defmodule Echo.Storage.S3Client do
       {:ok, objects} = S3Client.list_objects("images/")
   """
   def list_objects(prefix \\ "") do
-    GenServer.call(__MODULE__, {:list_objects, prefix})
+    GenServer.call(__MODULE__, {:list_objects, prefix}, 30_000)
   end
 
   @doc """
@@ -81,7 +81,7 @@ defmodule Echo.Storage.S3Client do
       :ok = S3Client.delete_object("images/photo.png")
   """
   def delete_object(path) do
-    GenServer.call(__MODULE__, {:delete_object, path})
+    GenServer.call(__MODULE__, {:delete_object, path}, 30_000)
   end
 
   # Server Callbacks

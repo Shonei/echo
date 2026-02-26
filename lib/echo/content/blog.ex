@@ -11,6 +11,7 @@ defmodule Echo.Content.Blog do
     field :icon, :string
     field :background_image, :string
     field :cover_image, :string
+    field :thumbnail_image, :string
     field :description, :string
     field :content, :string
 
@@ -32,6 +33,7 @@ defmodule Echo.Content.Blog do
       :icon,
       :background_image,
       :cover_image,
+      :thumbnail_image,
       :description,
       :content,
       :tags

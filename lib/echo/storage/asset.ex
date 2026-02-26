@@ -15,6 +15,7 @@ defmodule Echo.Storage.Asset do
     field :content_type, :string
     field :reference_type, :string
     field :reference_id, :integer
+    field :original_hash, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -22,7 +23,15 @@ defmodule Echo.Storage.Asset do
   @doc false
   def changeset(asset, attrs) do
     asset
-    |> cast(attrs, [:name, :url, :url_suffix, :content_type, :reference_type, :reference_id])
+    |> cast(attrs, [
+      :name,
+      :url,
+      :url_suffix,
+      :content_type,
+      :reference_type,
+      :reference_id,
+      :original_hash
+    ])
     |> validate_required([:name, :url, :url_suffix, :content_type])
     |> validate_reference()
   end

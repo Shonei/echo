@@ -87,106 +87,187 @@ defmodule Echo.Storage.Assets do
   end
 
   @doc """
-  Uploads a file to S3 and creates a database record.
+  Uploads a file to S3 and creates database records.
+  If the file is an image, it generates and stores 4 versions: original, background, content, and thumbnail.
 
-  Returns `{:ok, asset}` on success or `{:error, reason}` on failure.
+  Returns `{:ok, [assets]}` on success or `{:error, reason}` on failure.
   """
   def upload_asset(path, body, content_type, opts \\ []) do
     reference_type = Keyword.get(opts, :reference_type)
     reference_id = Keyword.get(opts, :reference_id)
 
-    # Check if asset already exists with this path
-    case get_asset_by_path(path) do
-      nil ->
-        do_upload_asset(path, body, content_type, reference_type, reference_id)
-
-      existing_asset ->
-        Logger.info("Existing asset: #{inspect(existing_asset)}")
-
-        # Reject if references don't match to prevent accidental overwrites
-        if references_match?(existing_asset, reference_type, reference_id) do
-          do_upload_asset(path, body, content_type, reference_type, reference_id, existing_asset)
-        else
-          {:error, :reference_mismatch}
-        end
+    if String.starts_with?(content_type, "image/") do
+      handle_image_upload(path, body, content_type, reference_type, reference_id)
+    else
+      handle_regular_upload(path, body, content_type, reference_type, reference_id)
     end
   end
 
-  defp references_match?(asset, reference_type, reference_id) do
-    asset.reference_type == reference_type and asset.reference_id == reference_id
+  defp handle_regular_upload(path, body, content_type, reference_type, reference_id) do
+    hash = compute_hash(path, content_type, reference_type, reference_id)
+
+    if asset_exists_by_hash?(hash) do
+      {:error, :already_exists}
+    else
+      case S3Client.upload_object(path, body, content_type) do
+        :ok ->
+          case create_asset_record(path, content_type, hash, reference_type, reference_id) do
+            {:ok, asset} -> {:ok, [asset]}
+            {:error, reason} -> {:error, reason}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
   end
 
-  defp do_upload_asset(
-         path,
-         body,
-         content_type,
-         reference_type,
-         reference_id,
-         existing_asset \\ nil
-       ) do
-    case upload_to_s3(path, body, content_type) do
-      :ok ->
-        url = build_asset_url(path)
-        url_suffix = build_url_suffix(path)
+  defp handle_image_upload(path, body, content_type, reference_type, reference_id) do
+    ext = Path.extname(path)
+    base = String.replace_suffix(path, ext, "")
 
-        attrs = %{
-          name: path,
-          url: url,
-          url_suffix: url_suffix,
-          content_type: content_type,
-          reference_type: reference_type,
-          reference_id: reference_id
+    # Default to .jpeg if there is no extension or if it's not well defined in path
+    ext = if ext == "", do: ".jpeg", else: ext
+
+    base_sizes = [
+      {:original, base <> "-original" <> ext, nil, ext},
+      {:background, base <> "-background" <> ext, 1920, ext},
+      {:content, base <> "-content" <> ext, 800, ext},
+      {:thumbnail, base <> "-thumbnail.jpeg", 400, ".jpeg"}
+    ]
+
+    # Generate images first
+    generated_images =
+      Enum.map(base_sizes, fn {type, current_path, width, target_ext} ->
+        processed_body =
+          if type == :original do
+            body
+          else
+            process_image(body, width, target_ext)
+          end
+
+        current_content_type =
+          if target_ext in [".jpeg", ".jpg"], do: "image/jpeg", else: content_type
+
+        hash = compute_hash(current_path, current_content_type, reference_type, reference_id)
+
+        %{
+          path: current_path,
+          body: processed_body,
+          content_type: current_content_type,
+          hash: hash
         }
+      end)
 
-        if existing_asset do
-          existing_asset
-          |> Asset.changeset(attrs)
-          |> Repo.update()
-        else
-          create_asset(attrs)
+    # Check for processing errors
+    processing_error =
+      Enum.find(generated_images, fn img ->
+        case img.body do
+          {:error, _} -> true
+          _ -> false
         end
+      end)
 
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+    if processing_error do
+      {:error, {:image_processing_failed, elem(processing_error.body, 1)}}
+    else
+      # Check if ANY image hash already exists
+      hashes = Enum.map(generated_images, & &1.hash)
 
-  defp upload_to_s3(path, body, content_type) do
-    case content_type do
-      "image/" <> _ ->
-        case make_thumbnail_for_image(body) do
-          {:ok, thumbnail} ->
-            result = S3Client.upload_object("#{path}_thumbnail", thumbnail, "image/jpeg")
-            Logger.info("Thumbnail upload result: #{inspect(result)}")
+      if any_asset_exists_by_hashes?(hashes) do
+        {:error, :already_exists}
+      else
+        # First upload all images
+        upload_result =
+          Enum.reduce_while(generated_images, :ok, fn img, _acc ->
+            case S3Client.upload_object(img.path, img.body, img.content_type) do
+              :ok -> {:cont, :ok}
+              {:error, reason} -> {:halt, {:error, reason}}
+            end
+          end)
+
+        case upload_result do
+          :ok ->
+            # After, update the DB in a transaction
+            case Repo.transaction(fn ->
+                   Enum.map(generated_images, fn img ->
+                     create_asset_record!(
+                       img.path,
+                       img.content_type,
+                       img.hash,
+                       reference_type,
+                       reference_id
+                     )
+                   end)
+                 end) do
+              {:ok, assets} -> {:ok, assets}
+              {:error, {:db_insert_failed, changeset}} -> {:error, changeset}
+              {:error, reason} -> {:error, reason}
+            end
 
           {:error, reason} ->
-            {:error, reason}
+            {:error, {:s3_upload_failed, reason}}
         end
-    end
-
-    case S3Client.upload_object(path, body, content_type) do
-      :ok -> :ok
-      {:error, reason} -> {:error, reason}
+      end
     end
   end
 
-  @doc """
-  Gets the content of an asset from S3.
+  defp compute_hash(path, content_type, reference_type, reference_id) do
+    ref_type_str = if reference_type, do: to_string(reference_type), else: "nil"
+    ref_id_str = if reference_id, do: to_string(reference_id), else: "nil"
 
-  Returns `{:ok, body, content_type}` on success or `{:error, reason}` on failure.
-  """
+    :crypto.hash(:sha256, "#{content_type}+#{path}+#{ref_type_str}+#{ref_id_str}")
+    |> Base.encode16(case: :lower)
+  end
+
+  defp asset_exists_by_hash?(hash) do
+    Asset
+    |> where([a], a.original_hash == ^hash)
+    |> Repo.exists?()
+  end
+
+  defp any_asset_exists_by_hashes?(hashes) do
+    Asset
+    |> where([a], a.original_hash in ^hashes)
+    |> Repo.exists?()
+  end
+
+  defp create_asset_record(path, content_type, original_hash, reference_type, reference_id) do
+    url = build_asset_url(path)
+    url_suffix = build_url_suffix(path)
+
+    attrs = %{
+      name: path,
+      url: url,
+      url_suffix: url_suffix,
+      content_type: content_type,
+      reference_type: reference_type,
+      reference_id: reference_id,
+      original_hash: original_hash
+    }
+
+    create_asset(attrs)
+  end
+
+  defp create_asset_record!(path, content_type, original_hash, reference_type, reference_id) do
+    case create_asset_record(path, content_type, original_hash, reference_type, reference_id) do
+      {:ok, asset} -> asset
+      {:error, changeset} -> Repo.rollback({:db_insert_failed, changeset})
+    end
+  end
+
+  # Gets the content of an asset from S3.
+  #
+  # Returns `{:ok, body, content_type}` on success or `{:error, reason}` on failure.
   def get_asset_content(path) do
     case S3Client.get_object(path) do
       {:ok, body, content_type} ->
         {:ok, body, content_type}
 
       {:error, :not_found} ->
-        # If this is the thumbnail path, try to get the original
-        if String.ends_with?(path, "_thumbnail") do
-          get_asset_content(String.replace_suffix(path, "_thumbnail", ""))
-        else
-          {:error, :not_found}
-        end
+        # We can no longer fall back to `_thumbnail` dynamically because we changed the path format.
+        # It's better to explicitly request the correct suffixed route.
+        {:error, :not_found}
 
       {:error, reason} ->
         {:error, reason}
@@ -195,12 +276,11 @@ defmodule Echo.Storage.Assets do
 
   # Private helpers
 
-  # make a thumbnail for an image and return it as a jpeg
-  # returns {:ok, buffer} or {:error, reason}
-  defp make_thumbnail_for_image(body) do
-    with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, 300),
-         {:ok, buffer} <- Image.write_to_buffer(thumbnail, ".jpeg") do
-      {:ok, buffer}
+  # Resize image and return binary
+  defp process_image(body, width, target_ext) do
+    with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, width),
+         {:ok, buffer} <- Image.write_to_buffer(thumbnail, target_ext) do
+      buffer
     else
       {:error, reason} -> {:error, reason}
     end
