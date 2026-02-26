@@ -25,6 +25,7 @@ defmodule EchoWeb.BlogJSON do
       icon: blog.icon,
       background_image: blog.background_image,
       cover_image: blog.cover_image,
+      thumbnail_image: blog.thumbnail_image,
       description: blog.description,
       tags: parse_tags(blog.tags),
       created_at: blog.inserted_at,
