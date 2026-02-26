@@ -189,17 +189,21 @@ defmodule Echo.Storage.Assets do
         case upload_result do
           :ok ->
             # After, update the DB in a transaction
-            Repo.transaction(fn ->
-              Enum.map(generated_images, fn img ->
-                create_asset_record!(
-                  img.path,
-                  img.content_type,
-                  img.hash,
-                  reference_type,
-                  reference_id
-                )
-              end)
-            end)
+            case Repo.transaction(fn ->
+                   Enum.map(generated_images, fn img ->
+                     create_asset_record!(
+                       img.path,
+                       img.content_type,
+                       img.hash,
+                       reference_type,
+                       reference_id
+                     )
+                   end)
+                 end) do
+              {:ok, assets} -> {:ok, assets}
+              {:error, {:db_insert_failed, changeset}} -> {:error, changeset}
+              {:error, reason} -> {:error, reason}
+            end
 
           {:error, reason} ->
             {:error, {:s3_upload_failed, reason}}

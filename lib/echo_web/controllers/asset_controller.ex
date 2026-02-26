@@ -130,14 +130,6 @@ defmodule EchoWeb.AssetController do
           |> put_status(:conflict)
           |> json(%{error: "Asset already exists. Duplicate upload detected."})
 
-        {:error, :reference_mismatch} ->
-          conn
-          |> put_status(:conflict)
-          |> json(%{
-            error:
-              "Asset already exists with different reference. Cannot overwrite an asset belonging to a different reference."
-          })
-
         {:error, %Ecto.Changeset{} = changeset} ->
           conn
           |> put_status(:unprocessable_entity)
