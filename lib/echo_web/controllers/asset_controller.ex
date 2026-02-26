@@ -108,19 +108,27 @@ defmodule EchoWeb.AssetController do
         |> maybe_add_opt(:reference_id, reference_id)
 
       case Assets.upload_asset(path, body, content_type, opts) do
-        {:ok, asset} ->
+        {:ok, assets} when is_list(assets) ->
           conn
           |> put_status(:ok)
           |> json(%{
-            data: %{
-              id: asset.id,
-              name: asset.name,
-              url_suffix: asset.url_suffix,
-              content_type: asset.content_type,
-              reference_type: asset.reference_type,
-              reference_id: asset.reference_id
-            }
+            data:
+              Enum.map(assets, fn asset ->
+                %{
+                  id: asset.id,
+                  name: asset.name,
+                  url_suffix: asset.url_suffix,
+                  content_type: asset.content_type,
+                  reference_type: asset.reference_type,
+                  reference_id: asset.reference_id
+                }
+              end)
           })
+
+        {:error, :already_exists} ->
+          conn
+          |> put_status(:conflict)
+          |> json(%{error: "Asset already exists. Duplicate upload detected."})
 
         {:error, :reference_mismatch} ->
           conn
