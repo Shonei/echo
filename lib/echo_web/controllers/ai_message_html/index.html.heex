@@ -1,0 +1,40 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">AI Conversations</h1>
+    <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
+      <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> Back to Home
+    </a>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <ul role="list" class="divide-y divide-gray-200">
+      <li :for={conversation <- @conversations}>
+        <a href={~p"/ai-messages/#{conversation.session_id}"} class="block hover:bg-gray-50 transition-colors duration-150 p-6">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-col flex-1">
+              <div class="flex items-center">
+                <span class="text-sm font-medium text-blue-600 truncate">Session: {conversation.session_id}</span>
+                <span :if={conversation.model} class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  {conversation.model}
+                </span>
+              </div>
+              <div class="mt-2 text-sm text-gray-500 line-clamp-2">
+                <pre class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{conversation.content}</pre>
+              </div>
+            </div>
+            <div class="ml-4 flex-shrink-0">
+              <.icon name="hero-chevron-right" class="h-5 w-5 text-gray-400" />
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-gray-400">
+            Started: {Calendar.strftime(conversation.inserted_at, "%Y-%m-%d %H:%M:%S")}
+          </div>
+        </a>
+      </li>
+    </ul>
+    
+    <div :if={length(@conversations) == 0} class="p-8 text-center text-gray-500">
+      No conversations found.
+    </div>
+  </div>
+</div>

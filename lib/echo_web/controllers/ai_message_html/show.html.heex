@@ -1,0 +1,62 @@
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Conversation</h1>
+      <p class="text-sm text-gray-500 mt-1">Session ID: {@session_id}</p>
+    </div>
+    <a href={~p"/ai-messages"} class="text-blue-600 hover:text-blue-800 flex items-center">
+      <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> Back to List
+    </a>
+  </div>
+
+  <div class="space-y-6">
+    <div :for={message <- @messages} class={[
+      "p-6 rounded-xl shadow-sm border",
+      message.role == "system" && "bg-gray-50 border-gray-200",
+      message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
+      message.role == "model" && "bg-white border-gray-200 mr-8",
+      message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
+    ]}>
+      <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+        <div class="flex items-center space-x-2">
+          <.icon :if={message.role == "system"} name="hero-cog" class="w-5 h-5 text-gray-500" />
+          <.icon :if={message.role == "user"} name="hero-user" class="w-5 h-5 text-blue-500" />
+          <.icon :if={message.role == "model"} name="hero-cpu" class="w-5 h-5 text-purple-500" />
+          <span class="font-semibold text-gray-700 capitalize">{message.role}</span>
+          <span class="text-xs text-gray-400 ml-2">{message.type}</span>
+        </div>
+        <div class="text-xs text-gray-400">
+          {Calendar.strftime(message.inserted_at, "%H:%M:%S")}
+        </div>
+      </div>
+      
+      <div class="prose prose-sm max-w-none text-gray-800">
+        <pre :if={message.type == "text" && message.content} class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{message.content}</pre>
+        
+        <div :if={message.type == "functionCall"} class="bg-gray-900 text-green-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
+          <span class="mb-1 text-gray-400">Function Call:</span>
+          <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
+        </div>
+        
+        <div :if={message.type == "functionResponse"} class="bg-gray-100 text-gray-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-gray-200 flex flex-col">
+          <span class="mb-1 text-gray-500">Function Response:</span>
+          <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
+        </div>
+
+        <div :if={message.type == "document"} class="bg-blue-50 text-blue-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-blue-200 flex flex-col">
+          <span class="mb-1 font-semibold">Document Attachment</span>
+          <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
+        </div>
+        
+        <div :if={message.type not in ["text", "functionCall", "functionResponse", "document"]} class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col">
+          <span class="mb-1">Unknown Type ({message.type}):</span>
+          <pre class="bg-transparent p-0 m-0 border-0">{inspect(message.payload)}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div :if={length(@messages) == 0} class="p-8 text-center text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200 my-6">
+    No messages found for this session.
+  </div>
+</div>

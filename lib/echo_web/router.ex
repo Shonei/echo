@@ -66,6 +66,9 @@ defmodule EchoWeb.Router do
     delete "/assets/:id", AssetUIController, :delete
     # Workaround for phoenix_html method=delete simulating via POST
     post "/assets/:id", AssetUIController, :delete
+
+    get "/ai-messages", AIMessageController, :index
+    get "/ai-messages/:id", AIMessageController, :show
   end
 
   scope "/echo", EchoWeb do

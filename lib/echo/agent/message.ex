@@ -27,4 +27,22 @@ defmodule Echo.Agent.Message do
 
     timestamps(type: :utc_datetime)
   end
+
+  import Ecto.Changeset
+
+  @doc false
+  def changeset(message, attrs) do
+    message
+    |> cast(attrs, [
+      :session_id,
+      :content,
+      :role,
+      :model,
+      :type,
+      :payload,
+      :reference_type,
+      :reference_id
+    ])
+    |> validate_required([:session_id, :role, :type])
+  end
 end

@@ -85,6 +85,11 @@ defmodule Echo.Agents.ConversationManager do
     }
 
     state = Map.put(state, id, convo)
+
+    if convo.system_prompt do
+      async_store_parts(id, "system", [%{"text" => convo.system_prompt}], convo.model)
+    end
+
     {:reply, id, state}
   end
 
@@ -108,6 +113,9 @@ defmodule Echo.Agents.ConversationManager do
         user_msg = %{"role" => "user", "parts" => parts}
         new_messages = convo.messages ++ [user_msg]
 
+        # Fire and forget DB storage for the user message
+        async_store_parts(conversation_id, "user", parts, convo.model)
+
         # Prepare API options
         api_opts = [
           system_prompt: convo.system_prompt,
@@ -129,6 +137,10 @@ defmodule Echo.Agents.ConversationManager do
                 updated_convo = %{convo | messages: new_messages ++ [ai_msg]}
 
                 state = Map.put(state, conversation_id, updated_convo)
+
+                # Fire and forget DB storage for the AI response
+                async_store_parts(conversation_id, "model", ai_parts, convo.model)
+
                 {:reply, {:ok, ai_parts}, state}
 
               {:error, reason} ->
@@ -172,5 +184,53 @@ defmodule Echo.Agents.ConversationManager do
   defp extract_parts(response) do
     Logger.error("Failed to extract parts from Gemini response: #{inspect(response)}")
     {:error, :unexpected_response_format}
+  end
+
+  # Log silently by rescuing errors
+  defp async_store_parts(session_id, role, parts, model) do
+    Task.start(fn ->
+      Enum.each(parts, fn part ->
+        attrs =
+          part_to_attrs(part)
+          |> Map.merge(%{
+            session_id: session_id,
+            role: role,
+            model: model
+          })
+
+        try do
+          case Echo.Agent.create_message(attrs) do
+            {:ok, _} ->
+              :ok
+
+            {:error, changeset} ->
+              Logger.warning("Failed to store async ai_message: #{inspect(changeset.errors)}")
+          end
+        rescue
+          e ->
+            Logger.error("Exception storing async ai_message: #{inspect(e)}")
+        end
+      end)
+    end)
+  end
+
+  defp part_to_attrs(%{"text" => text}) do
+    %{type: "text", content: text}
+  end
+
+  defp part_to_attrs(%{"functionCall" => call}) do
+    %{type: "functionCall", payload: call}
+  end
+
+  defp part_to_attrs(%{"functionResponse" => resp}) do
+    %{type: "functionResponse", payload: resp}
+  end
+
+  defp part_to_attrs(%{"inlineData" => data}) do
+    %{type: "document", payload: data}
+  end
+
+  defp part_to_attrs(part) do
+    %{type: "unknown", payload: part}
   end
 end
