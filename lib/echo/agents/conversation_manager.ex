@@ -40,7 +40,7 @@ defmodule Echo.Agents.ConversationManager do
   Sends a message to a conversation. Appends to history, calls the API, and updates history.
   Returns `{:ok, parts}` or an error.
   """
-  def message(conversation_id, message, timeout \\ 60_000) do
+  def message(conversation_id, message, timeout \\ 120_000) do
     GenServer.call(__MODULE__, {:message, conversation_id, message}, timeout)
   end
 
@@ -48,7 +48,7 @@ defmodule Echo.Agents.ConversationManager do
   Sends content blocks (e.g., function responses) to a conversation.
   Returns `{:ok, parts}` or an error.
   """
-  def content(conversation_id, content_blocks, timeout \\ 60_000) do
+  def content(conversation_id, content_blocks, timeout \\ 120_000) do
     GenServer.call(__MODULE__, {:content, conversation_id, content_blocks}, timeout)
   end
 

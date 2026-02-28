@@ -110,6 +110,7 @@ defmodule EchoWeb.Router do
       delete "/conversation/:id", AIConversationController, :delete
       put "/conversation/:id/message", AIConversationController, :message
       put "/conversation/:id/content", AIConversationController, :content
+      post "/agents/editor", AIConversationController, :editor
     end
 
     # List assets endpoint (uses JSON parsing)

@@ -43,9 +43,12 @@ defmodule EchoWeb.AIConversationController do
           |> json(%{error: "Conversation not found"})
 
         {:error, reason} ->
+          error_msg =
+            if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
           conn
           |> put_status(:bad_request)
-          |> json(%{error: to_string(reason)})
+          |> json(%{error: error_msg})
       end
     else
       conn
@@ -68,14 +71,72 @@ defmodule EchoWeb.AIConversationController do
           |> json(%{error: "Conversation not found"})
 
         {:error, reason} ->
+          error_msg =
+            if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
           conn
           |> put_status(:bad_request)
-          |> json(%{error: to_string(reason)})
+          |> json(%{error: error_msg})
       end
     else
       conn
       |> put_status(:bad_request)
       |> json(%{error: "Missing or invalid content blocks list"})
     end
+  end
+
+  def editor(conn, _params) do
+    system_prompt = """
+    You are an expert AI assistant editor for a blog. Your role is to help users refine, correct, and improve their blog posts. Focus on clarity, grammar, tone, and flow.
+    You are grounded in reality and must avoid hallucinations. Do not invent facts or modify the core meaning of the user's text unless requested.
+    You have access to the `edit_text` tool. Use it to provide precise text replacements. Provide a list of exact sub-strings (old_text) and what they should be replaced with (new_text).
+    """
+
+    tools = [
+      %{
+        "functionDeclarations" => [
+          %{
+            "name" => "edit_text",
+            "description" =>
+              "Applies text replacements to the blog. Provide a list of exact sub-strings (old_text) and what they should be replaced with (new_text). Each replacement is applied once.",
+            "parameters" => %{
+              "type" => "OBJECT",
+              "properties" => %{
+                "replacements" => %{
+                  "type" => "ARRAY",
+                  "items" => %{
+                    "type" => "OBJECT",
+                    "properties" => %{
+                      "old_text" => %{
+                        "type" => "STRING",
+                        "description" => "The exact matching text to replace."
+                      },
+                      "new_text" => %{
+                        "type" => "STRING",
+                        "description" => "The replacement text."
+                      }
+                    },
+                    "required" => ["old_text", "new_text"]
+                  }
+                }
+              },
+              "required" => ["replacements"]
+            }
+          }
+        ]
+      }
+    ]
+
+    opts = %{
+      "system_prompt" => system_prompt,
+      "temperature" => 0.1,
+      "tools" => tools
+    }
+
+    conversation_id = ConversationManager.start_conversation(opts)
+
+    conn
+    |> put_status(:created)
+    |> json(%{id: conversation_id})
   end
 end

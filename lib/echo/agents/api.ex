@@ -24,15 +24,15 @@ defmodule Echo.Agents.API do
   `contents` should be a list of maps matching the Content schema:
     [%{role: "user", parts: [%{text: "..."}]}]
   """
-  def generate_content(model, contents, opts \\ [], timeout \\ 30_000) do
-    GenServer.call(__MODULE__, {:generate_content, model, contents, opts}, timeout)
+  def generate_content(model, contents, opts \\ [], timeout \\ 300_000) do
+    GenServer.call(__MODULE__, {:generate_content, model, contents, opts, timeout}, timeout)
   end
 
   @doc """
   Calls the Gemini API to list available models.
   """
-  def list_models(timeout \\ 30_000) do
-    GenServer.call(__MODULE__, {:list_models}, timeout)
+  def list_models(timeout \\ 300_000) do
+    GenServer.call(__MODULE__, {:list_models, timeout}, timeout)
   end
 
   # --- Callbacks ---
@@ -51,7 +51,7 @@ defmodule Echo.Agents.API do
   end
 
   @impl true
-  def handle_call({:list_models}, _, state) do
+  def handle_call({:list_models, timeout}, _, state) do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
@@ -63,7 +63,10 @@ defmodule Echo.Agents.API do
 
       req = state.http_client.build(:get, url, headers)
 
-      case state.http_client.request(req, Echo.Finch) do
+      case state.http_client.request(req, Echo.Finch,
+             receive_timeout: timeout,
+             pool_timeout: 15_000
+           ) do
         {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
           case Jason.decode(resp_body) do
             {:ok, decoded} -> {:reply, {:ok, decoded}, state}
@@ -82,7 +85,7 @@ defmodule Echo.Agents.API do
   end
 
   @impl true
-  def handle_call({:generate_content, model, contents, opts}, _from, state) do
+  def handle_call({:generate_content, model, contents, opts, timeout}, _from, state) do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
@@ -104,7 +107,10 @@ defmodule Echo.Agents.API do
       # Using the http client from state (defaults to Finch)
       req = state.http_client.build(:post, url, headers, body)
 
-      case state.http_client.request(req, Echo.Finch) do
+      case state.http_client.request(req, Echo.Finch,
+             receive_timeout: timeout,
+             pool_timeout: 15_000
+           ) do
         {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
           case Jason.decode(resp_body) do
             {:ok, decoded} -> {:reply, {:ok, decoded}, state}
@@ -145,10 +151,15 @@ defmodule Echo.Agents.API do
 
   # Only support text, functionCall, functionResponse, inlineData for now
   defp format_part(%{text: _} = part), do: part
+  defp format_part(%{"text" => _} = part), do: part
   defp format_part(%{functionCall: _} = part), do: part
+  defp format_part(%{"functionCall" => _} = part), do: part
   defp format_part(%{functionResponse: _} = part), do: part
+  defp format_part(%{"functionResponse" => _} = part), do: part
   defp format_part(%{inlineData: %{mimeType: _, data: _}} = part), do: part
+  defp format_part(%{"inlineData" => %{"mimeType" => _, "data" => _}} = part), do: part
   defp format_part(%{thought: _} = part), do: part
+  defp format_part(%{"thought" => _} = part), do: part
 
   defp format_part(part) when is_map(part) do
     # Pass through other parts if they match schemas exactly, but warn

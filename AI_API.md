@@ -113,7 +113,27 @@ Returns the newly generated parts from the AI.
 
 ---
 
-### 4. Delete a Conversation
+### 4. Create an Editor Assistant Conversation
+
+Creates a pre-configured AI conversation specifically tailored for editing blog posts. 
+The conversation comes pre-loaded with a system prompt that grounds the AI as an expert blog editor with a low temperature (0.1) to avoid hallucinations. It also has access to the `edit_text` tool, which can apply an array of precise text replacements to a blog post.
+
+**Endpoint:** `POST /agents/editor`
+
+**Request Body:**
+None required.
+
+**Response (`201 Created`):**
+Returns the generated conversation ID to be used in subsequent `PUT` message requests.
+```json
+{
+  "id": "1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
+}
+```
+
+---
+
+### 5. Delete a Conversation
 
 Kills a conversation and removes it from the server's memory.
 
