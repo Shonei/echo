@@ -9,6 +9,7 @@ defmodule Echo.Agents.Conversation do
             thinking_enabled: false,
             thinking_budget: nil,
             tools: nil,
+            model: nil,
             messages: []
 end
 
@@ -79,6 +80,7 @@ defmodule Echo.Agents.ConversationManager do
         Map.get(opts, :thinking_enabled, false) || Map.get(opts, "thinking_enabled", false),
       thinking_budget: Map.get(opts, :thinking_budget) || Map.get(opts, "thinking_budget"),
       tools: Map.get(opts, :tools) || Map.get(opts, "tools"),
+      model: Map.get(opts, :model) || Map.get(opts, "model"),
       messages: []
     }
 
@@ -114,8 +116,10 @@ defmodule Echo.Agents.ConversationManager do
           tools: convo.tools
         ]
 
-        # Call Gemini (using default model for now, can be configured later)
-        model = "gemini-2.5-flash"
+        # Call Gemini
+        model =
+          convo.model ||
+            Application.get_env(:echo, Echo.Agents.API, [])[:model] || "gemini-2.5-flash"
 
         case Echo.Agents.API.generate_content(model, new_messages, api_opts) do
           {:ok, response} ->

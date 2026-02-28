@@ -104,6 +104,14 @@ defmodule EchoWeb.Router do
       resources "/blogs/:blog_id/revisions", RevisionController, only: [:create]
     end
 
+    scope "/ai" do
+      pipe_through :api_auth
+      post "/conversation", AIConversationController, :create
+      delete "/conversation/:id", AIConversationController, :delete
+      put "/conversation/:id/message", AIConversationController, :message
+      put "/conversation/:id/content", AIConversationController, :content
+    end
+
     # List assets endpoint (uses JSON parsing)
     get "/assets", AssetController, :index
   end
