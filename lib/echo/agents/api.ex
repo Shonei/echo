@@ -40,7 +40,7 @@ defmodule Echo.Agents.API do
   @impl true
   def init(_opts) do
     config = Application.get_env(:echo, __MODULE__, [])
-    api_key = Keyword.get(config, :api_key) || Application.get_env(:echo, __MODULE__)[:api_key]
+    api_key = Keyword.get(config, :api_key)
     http_client = Keyword.get(config, :http_client, Finch)
 
     if is_nil(api_key) || api_key == "" do
@@ -194,7 +194,13 @@ defmodule Echo.Agents.API do
       |> maybe_put(:temperature, opts[:temperature])
       |> maybe_put(:maxOutputTokens, opts[:max_output_tokens])
 
-    # Add thinkingConfig here later if needed
+    config =
+      if opts[:thinking_enabled] do
+        thinking_config = %{} |> maybe_put(:thinkingBudgetTokens, opts[:thinking_budget])
+        Map.put(config, :thinkingConfig, thinking_config)
+      else
+        config
+      end
 
     if map_size(config) > 0 do
       Map.put(payload, :generationConfig, config)

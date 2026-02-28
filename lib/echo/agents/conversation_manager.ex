@@ -74,7 +74,7 @@ defmodule Echo.Agents.ConversationManager do
     convo = %Conversation{
       id: id,
       system_prompt: Map.get(opts, :system_prompt) || Map.get(opts, "system_prompt"),
-      temperature: Map.get(opts, :temperature, 0.7) || Map.get(opts, "temperature", 0.7),
+      temperature: Map.get(opts, :temperature) || Map.get(opts, "temperature") || 0.7,
       max_output_tokens: Map.get(opts, :max_output_tokens) || Map.get(opts, "max_output_tokens"),
       thinking_enabled:
         Map.get(opts, :thinking_enabled, false) || Map.get(opts, "thinking_enabled", false),
@@ -113,7 +113,9 @@ defmodule Echo.Agents.ConversationManager do
           system_prompt: convo.system_prompt,
           temperature: convo.temperature,
           max_output_tokens: convo.max_output_tokens,
-          tools: convo.tools
+          tools: convo.tools,
+          thinking_enabled: convo.thinking_enabled,
+          thinking_budget: convo.thinking_budget
         ]
 
         # Call Gemini
