@@ -76,8 +76,8 @@ defmodule EchoWeb.AssetController do
 
     Logger.info("Uploading asset: #{path} with content type: #{content_type}")
 
-    # Read raw body
-    {:ok, body, conn} = Plug.Conn.read_body(conn)
+    # Read raw body, allowing up to 50MB
+    {:ok, body, conn} = Plug.Conn.read_body(conn, length: 50_000_000)
 
     # Parse optional reference params
     reference_type = Map.get(params, "reference_type")

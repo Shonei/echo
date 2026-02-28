@@ -51,6 +51,8 @@ if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do
 end
 
 if config_env() == :prod do
+  config :echo, axiom_token: System.get_env("AXIOM_TOKEN")
+
   database_path =
     System.get_env("DATABASE_PATH") ||
       raise """

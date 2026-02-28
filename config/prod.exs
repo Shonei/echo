@@ -25,9 +25,6 @@ config :echo,
   # Enable Axiom logging
   axiom_enabled: true,
 
-  # Your Axiom API token (get this from https://app.axiom.co/settings/tokens)
-  axiom_token: "xaat-93bd5fbe-37a5-413d-9ca4-bd622484ff9f",
-
   # Your Axiom dataset name (create this in https://app.axiom.co/datasets)
   axiom_dataset: "logs",
 
