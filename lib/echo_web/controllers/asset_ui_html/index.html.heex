@@ -19,6 +19,10 @@
           hover:file:bg-indigo-100
         " required />
       </div>
+      <div class="flex-1 max-w-xs">
+        <label for="password_upload" class="sr-only">Password</label>
+        <input type="password" name="password" id="password_upload" placeholder="Upload Password" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6" />
+      </div>
       <!-- CSRF protection -->
       <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
       <button type="submit" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
@@ -73,9 +77,15 @@
                   </td>
                   <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                     <div class="flex items-center justify-end gap-3">
-                      <.link href={~p"/assets/#{asset.id}"} method="delete" data-confirm="Are you sure you want to delete this asset?" class="text-red-600 hover:text-red-900 font-semibold bg-red-50 px-2 py-1 rounded">
-                        Delete
-                      </.link>
+                      <a href={"/api/v1/assets#{asset.url_suffix}"} target="_blank" class="text-indigo-600 hover:text-indigo-900">View</a>
+                      <form action={~p"/assets/#{asset.id}"} method="post" class="inline-flex gap-2">
+                        <input type="hidden" name="_method" value="delete" />
+                        <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
+                        <input type="password" name="password" placeholder="Password" class="block w-24 rounded-md border-0 py-1 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-red-600 sm:text-xs sm:leading-6" required />
+                        <button type="submit" data-confirm="Are you sure you want to delete this asset?" class="text-red-600 hover:text-red-900 font-semibold bg-red-50 px-2 py-1 rounded">
+                          Delete
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>
