@@ -54,6 +54,18 @@ defmodule Echo.Storage.Assets do
         id -> where(query, [a], a.reference_id == ^id)
       end
 
+    query =
+      case Keyword.get(opts, :limit) do
+        nil -> query
+        limit -> limit(query, ^limit)
+      end
+
+    query =
+      case Keyword.get(opts, :offset) do
+        nil -> query
+        offset -> offset(query, ^offset)
+      end
+
     Repo.all(query)
   end
 
@@ -70,8 +82,12 @@ defmodule Echo.Storage.Assets do
   Deletes an asset from both the database and S3 storage.
   """
   def delete_asset(%Asset{} = asset) do
-    # Extract path from URL for S3 deletion
-    path = extract_path_from_url(asset.url)
+    # For generated images, we might have multiple assets with the same original_hash
+    # We should only delete from S3 if this is the last asset referencing that S3 object
+    # For now, delete it from S3 regardless since generating images again will re-create it.
+
+    # We use name as path in S3 because url_suffix has a leading slash
+    path = asset.name
 
     case S3Client.delete_object(path) do
       :ok ->

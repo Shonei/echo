@@ -143,6 +143,35 @@ defmodule EchoWeb.AssetController do
     end
   end
 
+  @doc """
+  DELETE /api/v1/assets/*path
+
+  Deletes an asset.
+  """
+  def delete(conn, %{"path" => path_parts}) do
+    path = Enum.join(path_parts, "/")
+
+    case Assets.get_asset_by_path(path) do
+      nil ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{error: "Asset not found"})
+
+      asset ->
+        case Assets.delete_asset(asset) do
+          {:ok, _asset} ->
+            conn
+            |> put_status(:ok)
+            |> json(%{data: %{id: asset.id, message: "Asset deleted successfully"}})
+
+          {:error, reason} ->
+            conn
+            |> put_status(:internal_server_error)
+            |> json(%{error: "Failed to delete asset: #{inspect(reason)}"})
+        end
+    end
+  end
+
   # Determine content type from file extension
   defp content_type_from_extension(path) do
     case Path.extname(path) |> String.downcase() do

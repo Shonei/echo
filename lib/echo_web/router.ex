@@ -60,6 +60,10 @@ defmodule EchoWeb.Router do
     get "/chat/rooms/:id/edit", ChatWebController, :edit
     put "/chat/rooms/:id", ChatWebController, :update
     get "/chat/:room", ChatWebController, :room
+
+    get "/assets", AssetUIController, :index
+    post "/assets", AssetUIController, :create
+    delete "/assets/:id", AssetUIController, :delete
   end
 
   scope "/echo", EchoWeb do
@@ -127,6 +131,12 @@ defmodule EchoWeb.Router do
   scope "/api/v1/assets", EchoWeb do
     pipe_through [:asset_upload, :api_auth]
     put "/*path", AssetController, :update
+  end
+
+  # Asset deletions
+  scope "/api/v1/assets", EchoWeb do
+    pipe_through :api_auth
+    delete "/*path", AssetController, :delete
   end
 
   scope "/api/v1", EchoWeb do
