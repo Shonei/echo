@@ -24,8 +24,8 @@ defmodule Echo.Agents.API do
   `contents` should be a list of maps matching the Content schema:
     [%{role: "user", parts: [%{text: "..."}]}]
   """
-  def generate_content(model, contents, timeout \\ 30_000) do
-    GenServer.call(__MODULE__, {:generate_content, model, contents}, timeout)
+  def generate_content(model, contents, opts \\ [], timeout \\ 30_000) do
+    GenServer.call(__MODULE__, {:generate_content, model, contents, opts}, timeout)
   end
 
   @doc """
@@ -82,7 +82,7 @@ defmodule Echo.Agents.API do
   end
 
   @impl true
-  def handle_call({:generate_content, model, contents}, _from, state) do
+  def handle_call({:generate_content, model, contents, opts}, _from, state) do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
@@ -96,6 +96,8 @@ defmodule Echo.Agents.API do
       payload = %{
         contents: format_contents(contents)
       }
+
+      payload = append_options(payload, opts)
 
       body = Jason.encode!(payload)
 
@@ -152,4 +154,34 @@ defmodule Echo.Agents.API do
     Logger.warning("Unknown part type passed to Gemini API: #{inspect(Map.keys(part))}")
     part
   end
+
+  defp append_options(payload, opts) do
+    payload
+    |> maybe_add_system_prompt(opts[:system_prompt])
+    |> maybe_add_generation_config(opts)
+  end
+
+  defp maybe_add_system_prompt(payload, nil), do: payload
+
+  defp maybe_add_system_prompt(payload, prompt) do
+    Map.put(payload, :systemInstruction, %{parts: [%{text: prompt}]})
+  end
+
+  defp maybe_add_generation_config(payload, opts) do
+    config =
+      %{}
+      |> maybe_put(:temperature, opts[:temperature])
+      |> maybe_put(:maxOutputTokens, opts[:max_output_tokens])
+
+    # Add thinkingConfig here later if needed
+
+    if map_size(config) > 0 do
+      Map.put(payload, :generationConfig, config)
+    else
+      payload
+    end
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

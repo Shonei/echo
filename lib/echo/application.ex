@@ -28,6 +28,8 @@ defmodule Echo.Application do
         Echo.AuthUser,
         # Gemini API GenServer
         Echo.Agents.API,
+        # AI Conversation Manager GenServer
+        Echo.Agents.ConversationManager,
         # HTTP client
         {Finch, name: Echo.Finch},
         # Start to serve requests, typically the last entry
