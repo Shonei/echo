@@ -17,6 +17,7 @@ defmodule Echo.Content do
   def list_blogs(params \\ %{}) do
     Blog
     |> build_blog_search(params)
+    |> order_by([b], asc: b.inserted_at)
     |> Repo.all()
   end
 
