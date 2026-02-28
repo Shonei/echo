@@ -6,7 +6,7 @@ defmodule Echo.Agents.API do
   use GenServer
   require Logger
 
-  defstruct [:api_key, :http_client]
+  defstruct [:api_key, :http_client, :model]
 
   # --- Client API ---
 
@@ -24,8 +24,8 @@ defmodule Echo.Agents.API do
   `contents` should be a list of maps matching the Content schema:
     [%{role: "user", parts: [%{text: "..."}]}]
   """
-  def generate_content(model, contents, opts \\ [], timeout \\ 300_000) do
-    GenServer.call(__MODULE__, {:generate_content, model, contents, opts, timeout}, timeout)
+  def generate_content(contents, opts \\ [], timeout \\ 300_000) do
+    GenServer.call(__MODULE__, {:generate_content, contents, opts, timeout}, timeout)
   end
 
   @doc """
@@ -42,12 +42,13 @@ defmodule Echo.Agents.API do
     config = Application.get_env(:echo, __MODULE__, [])
     api_key = Keyword.get(config, :api_key)
     http_client = Keyword.get(config, :http_client, Finch)
+    model = Keyword.get(config, :model)
 
     if is_nil(api_key) || api_key == "" do
       Logger.warning("GEMINI_API_KEY is not set. API calls will fail.")
     end
 
-    {:ok, %__MODULE__{api_key: api_key, http_client: http_client}}
+    {:ok, %__MODULE__{api_key: api_key, http_client: http_client, model: model}}
   end
 
   @impl true
@@ -85,11 +86,12 @@ defmodule Echo.Agents.API do
   end
 
   @impl true
-  def handle_call({:generate_content, model, contents, opts, timeout}, _from, state) do
+  def handle_call({:generate_content, contents, opts, timeout}, _from, state) do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
-      url = "https://generativelanguage.googleapis.com/v1beta/models/#{model}:generateContent"
+      url =
+        "https://generativelanguage.googleapis.com/v1beta/models/#{state.model}:generateContent"
 
       headers = [
         {"Content-Type", "application/json"},
@@ -135,30 +137,25 @@ defmodule Echo.Agents.API do
     Enum.map(contents, &format_content/1)
   end
 
-  defp format_content(%{role: role, parts: parts}) do
+  defp format_content(%{"role" => role, "parts" => parts}) do
     %{
-      role: role,
-      parts: Enum.map(parts, &format_part/1)
+      "role" => role,
+      "parts" => Enum.map(parts, &format_part/1)
     }
   end
 
   # Default role is generic if not specified (sometimes just providing parts is enough)
-  defp format_content(%{parts: parts}) do
+  defp format_content(%{"parts" => parts}) do
     %{
-      parts: Enum.map(parts, &format_part/1)
+      "parts" => Enum.map(parts, &format_part/1)
     }
   end
 
   # Only support text, functionCall, functionResponse, inlineData for now
-  defp format_part(%{text: _} = part), do: part
   defp format_part(%{"text" => _} = part), do: part
-  defp format_part(%{functionCall: _} = part), do: part
   defp format_part(%{"functionCall" => _} = part), do: part
-  defp format_part(%{functionResponse: _} = part), do: part
   defp format_part(%{"functionResponse" => _} = part), do: part
-  defp format_part(%{inlineData: %{mimeType: _, data: _}} = part), do: part
   defp format_part(%{"inlineData" => %{"mimeType" => _, "data" => _}} = part), do: part
-  defp format_part(%{thought: _} = part), do: part
   defp format_part(%{"thought" => _} = part), do: part
 
   defp format_part(part) when is_map(part) do

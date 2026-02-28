@@ -10,7 +10,7 @@ import Config
 # Configure Gemini API
 config :echo, Echo.Agents.API,
   api_key: System.get_env("GEMINI_API_KEY"),
-  model: System.get_env("GEMINI_MODEL") || "gemini-2.5-flash"
+  model: System.get_env("GEMINI_MODEL") || "gemini-3.1-pro-preview"
 
 # ## Using releases
 #

@@ -89,7 +89,8 @@ defmodule EchoWeb.AIConversationController do
     system_prompt = """
     You are an expert AI assistant editor for a blog. Your role is to help users refine, correct, and improve their blog posts. Focus on clarity, grammar, tone, and flow.
     You are grounded in reality and must avoid hallucinations. Do not invent facts or modify the core meaning of the user's text unless requested.
-    You have access to the `edit_text` tool. Use it to provide precise text replacements. Provide a list of exact sub-strings (old_text) and what they should be replaced with (new_text).
+    You have a tool called `edit_text`. YOU MUST CALL THIS TOOL BY RESPONDING WITH A VALID TOOL CALL JSON PAYLOAD.
+    DO NOT WRITE PYTHON, JAVASCRIPT, OR ANY OTHER CODE. DO NOT WRAP YOUR RESPONSE IN `print()` OR ANY OTHER FUNCTION.
     """
 
     tools = [
@@ -98,22 +99,24 @@ defmodule EchoWeb.AIConversationController do
           %{
             "name" => "edit_text",
             "description" =>
-              "Applies text replacements to the blog. Provide a list of exact sub-strings (old_text) and what they should be replaced with (new_text). Each replacement is applied once.",
+              "Applies one or more text replacements to the document. You MUST provide the arguments as a JSON object matching this schema.",
             "parameters" => %{
               "type" => "OBJECT",
               "properties" => %{
                 "replacements" => %{
                   "type" => "ARRAY",
+                  "description" => "A list of text replacements to perform.",
                   "items" => %{
                     "type" => "OBJECT",
                     "properties" => %{
                       "old_text" => %{
                         "type" => "STRING",
-                        "description" => "The exact matching text to replace."
+                        "description" =>
+                          "The exact, case-sensitive text currently in the document that needs to be replaced."
                       },
                       "new_text" => %{
                         "type" => "STRING",
-                        "description" => "The replacement text."
+                        "description" => "The new text that will replace the old_text."
                       }
                     },
                     "required" => ["old_text", "new_text"]

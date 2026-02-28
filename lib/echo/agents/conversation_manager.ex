@@ -90,7 +90,7 @@ defmodule Echo.Agents.ConversationManager do
 
   @impl true
   def handle_call({:message, conversation_id, message}, _from, state) do
-    do_process_content(conversation_id, [%{text: message}], state)
+    do_process_content(conversation_id, [%{"text" => message}], state)
   end
 
   @impl true
@@ -105,7 +105,7 @@ defmodule Echo.Agents.ConversationManager do
 
       convo ->
         # Append user message parts
-        user_msg = %{role: "user", parts: parts}
+        user_msg = %{"role" => "user", "parts" => parts}
         new_messages = convo.messages ++ [user_msg]
 
         # Prepare API options
@@ -119,17 +119,13 @@ defmodule Echo.Agents.ConversationManager do
         ]
 
         # Call Gemini
-        model =
-          convo.model ||
-            Application.get_env(:echo, Echo.Agents.API, [])[:model] || "gemini-2.5-flash"
-
-        case Echo.Agents.API.generate_content(model, new_messages, api_opts) do
+        case Echo.Agents.API.generate_content(new_messages, api_opts) do
           {:ok, response} ->
             # Extract AI parts directly
             case extract_parts(response) do
               {:ok, ai_parts} ->
                 # Append AI message
-                ai_msg = %{role: "model", parts: ai_parts}
+                ai_msg = %{"role" => "model", "parts" => ai_parts}
                 updated_convo = %{convo | messages: new_messages ++ [ai_msg]}
 
                 state = Map.put(state, conversation_id, updated_convo)
@@ -156,22 +152,25 @@ defmodule Echo.Agents.ConversationManager do
   defp extract_parts(%{
          "candidates" => [%{"content" => %{"parts" => parts}} | _]
        }) do
-    # Because Elixir decode returns string keys, we normalize them to atoms or just return as is.
-    # The simplest is returning them as lists of maps (mostly using string keys).
-    {:ok, Enum.map(parts, &normalize_keys/1)}
+    {:ok, parts}
+  end
+
+  defp extract_parts(%{
+         "candidates" => [%{"finishReason" => reason, "finishMessage" => message} | _]
+       }) do
+    Logger.error("Gemini API returned finish reason: #{reason} with message: #{message}")
+    {:error, {:gemini_error, reason, message}}
+  end
+
+  defp extract_parts(%{
+         "candidates" => [%{"finishReason" => reason} | _]
+       }) do
+    Logger.error("Gemini API returned finish reason: #{reason}")
+    {:error, {:gemini_error, reason}}
   end
 
   defp extract_parts(response) do
     Logger.error("Failed to extract parts from Gemini response: #{inspect(response)}")
     {:error, :unexpected_response_format}
-  end
-
-  defp normalize_keys(map) when is_map(map) do
-    Map.new(map, fn {k, v} ->
-      {
-        if(is_binary(k), do: String.to_atom(k), else: k),
-        if(is_map(v), do: normalize_keys(v), else: v)
-      }
-    end)
   end
 end
