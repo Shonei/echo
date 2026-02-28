@@ -1,6 +1,6 @@
 defmodule EchoWeb.Telemetry do
   use Supervisor
-  alias Echo.Logger
+  require Logger
   import Telemetry.Metrics
 
   def start_link(arg) do
@@ -39,12 +39,12 @@ defmodule EchoWeb.Telemetry do
     method = Map.get(metadata.conn, :method)
     status = Map.get(metadata.conn, :status)
 
-    Logger.info("HTTP Request", %{
+    Logger.info("HTTP Request",
       duration: Map.get(measurements, :duration),
       path: path,
       method: method,
       status: status
-    })
+    )
   end
 
   def handle_event([:echo, :repo, :query], measurements, metadata, _config) do
@@ -54,7 +54,7 @@ defmodule EchoWeb.Telemetry do
     if ms_total_time > 1_000 do
       query = metadata.query
 
-      Logger.info("SLOW QUERY", %{query: query, times: measurements})
+      Logger.info("SLOW QUERY", query: query, times: measurements)
     end
   end
 
