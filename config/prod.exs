@@ -45,3 +45,5 @@ config :echo, Echo.Storage.S3Client,
   region: System.get_env("S3_REGION") || "auto",
   bucket: System.get_env("S3_BUCKET"),
   access_key_id: System.get_env("S3_ACCESS_KEY_ID")
+
+config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"

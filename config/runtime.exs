@@ -7,6 +7,11 @@ import Config
 # any compile-time configuration in here, as it won't be applied.
 # The block below contains prod specific runtime configuration.
 
+# Configure Gemini API
+config :echo, Echo.Agents.API,
+  api_key: System.get_env("GEMINI_API_KEY"),
+  model: System.get_env("GEMINI_MODEL") || "gemini-3.1-pro-preview"
+
 # ## Using releases
 #
 # If you use `mix release`, you need to explicitly enable the server

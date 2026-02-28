@@ -98,3 +98,5 @@ config :echo, :auth,
   username: "admin",
   password: "password",
   secret: "secret"
+
+config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"

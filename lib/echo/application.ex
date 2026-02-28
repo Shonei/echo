@@ -26,6 +26,12 @@ defmodule Echo.Application do
         EchoWeb.Plugs.RateLimit.TableOwner,
         # Auth User GenServer
         Echo.AuthUser,
+        # Gemini API GenServer
+        Echo.Agents.API,
+        # AI Conversation Manager GenServer
+        Echo.Agents.ConversationManager,
+        # HTTP client
+        {Finch, name: Echo.Finch},
         # Start to serve requests, typically the last entry
         EchoWeb.Endpoint
       ] ++ axiom_logger_child() ++ s3_client_child()
