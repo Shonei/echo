@@ -58,6 +58,9 @@ config :cors_plug,
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
 
+# Configure Gemini API
+config :echo, Echo.Agents.API, api_key: System.get_env("GEMINI_API_KEY")
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

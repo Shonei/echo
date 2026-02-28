@@ -14,7 +14,6 @@ defmodule Echo.Agent.Message do
   - reference_id: The id of the resource that the message is related to.
   """
   use Ecto.Schema
-  import Ecto.Changeset
 
   schema "ai_messages" do
     field :session_id, :string
