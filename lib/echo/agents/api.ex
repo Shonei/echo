@@ -148,6 +148,7 @@ defmodule Echo.Agents.API do
   defp format_part(%{functionCall: _} = part), do: part
   defp format_part(%{functionResponse: _} = part), do: part
   defp format_part(%{inlineData: %{mimeType: _, data: _}} = part), do: part
+  defp format_part(%{thought: _} = part), do: part
 
   defp format_part(part) when is_map(part) do
     # Pass through other parts if they match schemas exactly, but warn
@@ -158,8 +159,17 @@ defmodule Echo.Agents.API do
   defp append_options(payload, opts) do
     payload
     |> maybe_add_system_prompt(opts[:system_prompt])
+    |> maybe_add_tools(opts[:tools])
     |> maybe_add_generation_config(opts)
   end
+
+  defp maybe_add_tools(payload, nil), do: payload
+
+  defp maybe_add_tools(payload, tools) when is_list(tools) do
+    Map.put(payload, :tools, tools)
+  end
+
+  defp maybe_add_tools(payload, _), do: payload
 
   defp maybe_add_system_prompt(payload, nil), do: payload
 
