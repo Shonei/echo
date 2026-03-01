@@ -33,7 +33,7 @@ config :echo,
   axiom_url: "https://api.axiom.co"
 
 config :cors_plug,
-  origin: [~r/^https?:\/\/(.*\.shonei\.me|shonei\.dev)$/],
+  origin: [~r/^https?:\/\/(.*\.shonei\.me|shonei\.dev|apps\.shonei\.dev)$/],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
 
