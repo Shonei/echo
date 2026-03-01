@@ -169,9 +169,7 @@ defmodule EchoWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard",
-        metrics: EchoWeb.Telemetry,
-        ecto_repos: [Echo.Repo],
-        ecto_sqlite3_extras_options: []
+        metrics: EchoWeb.Telemetry
     end
   end
 end
