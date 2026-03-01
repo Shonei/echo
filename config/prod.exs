@@ -10,6 +10,7 @@ config :echo, EchoWeb.Endpoint,
   check_origin: [
     "https://apps.shonei.me",
     "https://shonei.dev",
+    "https://apps.shonei.dev",
     "//apps.shonei.me",
     "//shonei.dev"
   ]
