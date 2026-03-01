@@ -126,6 +126,41 @@ defmodule EchoWeb.AIConversationController do
               "required" => ["replacements"]
             }
           }
+          # %{
+          #   "name" => "string_insert",
+          #   "description" =>
+          #     "Inserts new text into the document at specific locations relative to existing text. You MUST provide the arguments as a JSON object matching this schema.",
+          #   "parameters" => %{
+          #     "type" => "OBJECT",
+          #     "properties" => %{
+          #       "insertions" => %{
+          #         "type" => "ARRAY",
+          #         "description" => "A list of text insertions to perform.",
+          #         "items" => %{
+          #           "type" => "OBJECT",
+          #           "properties" => %{
+          #             "target_text" => %{
+          #               "type" => "STRING",
+          #               "description" =>
+          #                 "The exact, case-sensitive text currently in the document where the new text should be inserted."
+          #             },
+          #             "insert_text" => %{
+          #               "type" => "STRING",
+          #               "description" => "The new text to insert."
+          #             },
+          #             "position" => %{
+          #               "type" => "STRING",
+          #               "description" => "Whether to insert 'before' or 'after' the target_text.",
+          #               "enum" => ["before", "after"]
+          #             }
+          #           },
+          #           "required" => ["target_text", "insert_text", "position"]
+          #         }
+          #       }
+          #     },
+          #     "required" => ["insertions"]
+          #   }
+          # }
         ]
       }
     ]

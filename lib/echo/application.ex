@@ -28,8 +28,9 @@ defmodule Echo.Application do
         Echo.AuthUser,
         # Gemini API GenServer
         Echo.Agents.API,
-        # AI Conversation Manager GenServer
-        Echo.Agents.ConversationManager,
+        # AI Conversation Manager Processes (Dynamic)
+        {Registry, keys: :unique, name: Echo.Agents.ConversationRegistry},
+        {DynamicSupervisor, strategy: :one_for_one, name: Echo.Agents.ConversationSupervisor},
         # HTTP client
         {Finch, name: Echo.Finch},
         # Start to serve requests, typically the last entry
