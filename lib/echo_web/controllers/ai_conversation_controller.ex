@@ -15,11 +15,20 @@ defmodule EchoWeb.AIConversationController do
         "tools"
       ])
 
-    conversation_id = ConversationManager.start_conversation(opts)
+    case ConversationManager.start_conversation(opts) do
+      {:ok, conversation_id} ->
+        conn
+        |> put_status(:created)
+        |> json(%{id: conversation_id})
 
-    conn
-    |> put_status(:created)
-    |> json(%{id: conversation_id})
+      {:error, reason} ->
+        error_msg =
+          if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Failed to start conversation", details: error_msg})
+    end
   end
 
   def delete(conn, %{"id" => id}) do
@@ -171,10 +180,19 @@ defmodule EchoWeb.AIConversationController do
       "tools" => tools
     }
 
-    conversation_id = ConversationManager.start_conversation(opts)
+    case ConversationManager.start_conversation(opts) do
+      {:ok, conversation_id} ->
+        conn
+        |> put_status(:created)
+        |> json(%{id: conversation_id})
 
-    conn
-    |> put_status(:created)
-    |> json(%{id: conversation_id})
+      {:error, reason} ->
+        error_msg =
+          if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Failed to start conversation", details: error_msg})
+    end
   end
 end

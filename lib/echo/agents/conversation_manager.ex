@@ -34,17 +34,15 @@ defmodule Echo.Agents.ConversationManager do
            {ConversationServer, opts}
          ) do
       {:ok, _pid} ->
-        id
+        {:ok, id}
 
       {:error, {:already_started, _pid}} ->
-        id
+        {:ok, id}
 
       error ->
         require Logger
         Logger.error("Failed to start conversation #{id}: #{inspect(error)}")
-        # You could decide how to handle failure. Returning `nil` or raising
-        # is typical if starting the process fails unrecoverably.
-        id
+        {:error, error}
     end
   end
 

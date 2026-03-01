@@ -2,7 +2,7 @@ defmodule Echo.Agents.ConversationServer do
   @moduledoc """
   A GenServer that manages a single conversation in memory.
   """
-  use GenServer
+  use GenServer, restart: :transient
   require Logger
 
   alias Echo.Agents.Conversation
