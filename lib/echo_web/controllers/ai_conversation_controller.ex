@@ -15,11 +15,20 @@ defmodule EchoWeb.AIConversationController do
         "tools"
       ])
 
-    conversation_id = ConversationManager.start_conversation(opts)
+    case ConversationManager.start_conversation(opts) do
+      {:ok, conversation_id} ->
+        conn
+        |> put_status(:created)
+        |> json(%{id: conversation_id})
 
-    conn
-    |> put_status(:created)
-    |> json(%{id: conversation_id})
+      {:error, reason} ->
+        error_msg =
+          if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Failed to start conversation", details: error_msg})
+    end
   end
 
   def delete(conn, %{"id" => id}) do
@@ -126,6 +135,41 @@ defmodule EchoWeb.AIConversationController do
               "required" => ["replacements"]
             }
           }
+          # %{
+          #   "name" => "string_insert",
+          #   "description" =>
+          #     "Inserts new text into the document at specific locations relative to existing text. You MUST provide the arguments as a JSON object matching this schema.",
+          #   "parameters" => %{
+          #     "type" => "OBJECT",
+          #     "properties" => %{
+          #       "insertions" => %{
+          #         "type" => "ARRAY",
+          #         "description" => "A list of text insertions to perform.",
+          #         "items" => %{
+          #           "type" => "OBJECT",
+          #           "properties" => %{
+          #             "target_text" => %{
+          #               "type" => "STRING",
+          #               "description" =>
+          #                 "The exact, case-sensitive text currently in the document where the new text should be inserted."
+          #             },
+          #             "insert_text" => %{
+          #               "type" => "STRING",
+          #               "description" => "The new text to insert."
+          #             },
+          #             "position" => %{
+          #               "type" => "STRING",
+          #               "description" => "Whether to insert 'before' or 'after' the target_text.",
+          #               "enum" => ["before", "after"]
+          #             }
+          #           },
+          #           "required" => ["target_text", "insert_text", "position"]
+          #         }
+          #       }
+          #     },
+          #     "required" => ["insertions"]
+          #   }
+          # }
         ]
       }
     ]
@@ -136,10 +180,19 @@ defmodule EchoWeb.AIConversationController do
       "tools" => tools
     }
 
-    conversation_id = ConversationManager.start_conversation(opts)
+    case ConversationManager.start_conversation(opts) do
+      {:ok, conversation_id} ->
+        conn
+        |> put_status(:created)
+        |> json(%{id: conversation_id})
 
-    conn
-    |> put_status(:created)
-    |> json(%{id: conversation_id})
+      {:error, reason} ->
+        error_msg =
+          if String.Chars.impl_for(reason), do: to_string(reason), else: inspect(reason)
+
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{error: "Failed to start conversation", details: error_msg})
+    end
   end
 end

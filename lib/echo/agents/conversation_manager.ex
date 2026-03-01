@@ -15,33 +15,45 @@ end
 
 defmodule Echo.Agents.ConversationManager do
   @moduledoc """
-  A GenServer that manages multiple conversations in memory.
+  API boundary for conversation management. Uses a DynamicSupervisor
+  and Registry to manage one process per conversation.
   """
-  use GenServer
-  require Logger
 
-  alias Echo.Agents.Conversation
-
-  # --- Client API ---
-
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
+  alias Echo.Agents.ConversationServer
 
   @doc """
   Starts a new conversation with the given configuration options.
   Returns the `conversation_id`.
   """
   def start_conversation(opts \\ %{}) do
-    GenServer.call(__MODULE__, {:start_conversation, opts})
+    id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    opts = Map.put(opts, :id, id)
+
+    case DynamicSupervisor.start_child(
+           Echo.Agents.ConversationSupervisor,
+           {ConversationServer, opts}
+         ) do
+      {:ok, _pid} ->
+        {:ok, id}
+
+      {:error, {:already_started, _pid}} ->
+        {:ok, id}
+
+      error ->
+        require Logger
+        Logger.error("Failed to start conversation #{id}: #{inspect(error)}")
+        {:error, error}
+    end
   end
 
   @doc """
-  Sends a message to a conversation. Appends to history, calls the API, and updates history.
+  Sends a message to a conversation.
   Returns `{:ok, parts}` or an error.
   """
   def message(conversation_id, message, timeout \\ 120_000) do
-    GenServer.call(__MODULE__, {:message, conversation_id, message}, timeout)
+    with_process(conversation_id, fn pid ->
+      ConversationServer.message(pid, message, timeout)
+    end)
   end
 
   @doc """
@@ -49,188 +61,27 @@ defmodule Echo.Agents.ConversationManager do
   Returns `{:ok, parts}` or an error.
   """
   def content(conversation_id, content_blocks, timeout \\ 120_000) do
-    GenServer.call(__MODULE__, {:content, conversation_id, content_blocks}, timeout)
-  end
-
-  @doc """
-  Kills (removes) a conversation from memory cache.
-  """
-  def kill_conversation(conversation_id) do
-    GenServer.cast(__MODULE__, {:kill_conversation, conversation_id})
-  end
-
-  # --- Callbacks ---
-
-  @impl true
-  def init(_opts) do
-    # Map from conversation_id -> %Echo.Agents.Conversation{}
-    {:ok, %{}}
-  end
-
-  @impl true
-  def handle_call({:start_conversation, opts}, _from, state) do
-    id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-
-    convo = %Conversation{
-      id: id,
-      system_prompt: Map.get(opts, :system_prompt) || Map.get(opts, "system_prompt"),
-      temperature: Map.get(opts, :temperature) || Map.get(opts, "temperature") || 0.7,
-      max_output_tokens: Map.get(opts, :max_output_tokens) || Map.get(opts, "max_output_tokens"),
-      thinking_enabled:
-        Map.get(opts, :thinking_enabled, false) || Map.get(opts, "thinking_enabled", false),
-      thinking_budget: Map.get(opts, :thinking_budget) || Map.get(opts, "thinking_budget"),
-      tools: Map.get(opts, :tools) || Map.get(opts, "tools"),
-      model: Map.get(opts, :model) || Map.get(opts, "model"),
-      messages: []
-    }
-
-    state = Map.put(state, id, convo)
-
-    if convo.system_prompt do
-      async_store_parts(id, "system", [%{"text" => convo.system_prompt}], convo.model)
-    end
-
-    {:reply, id, state}
-  end
-
-  @impl true
-  def handle_call({:message, conversation_id, message}, _from, state) do
-    do_process_content(conversation_id, [%{"text" => message}], state)
-  end
-
-  @impl true
-  def handle_call({:content, conversation_id, content_blocks}, _from, state) do
-    do_process_content(conversation_id, content_blocks, state)
-  end
-
-  defp do_process_content(conversation_id, parts, state) do
-    case Map.get(state, conversation_id) do
-      nil ->
-        {:reply, {:error, :conversation_not_found}, state}
-
-      convo ->
-        # Append user message parts
-        user_msg = %{"role" => "user", "parts" => parts}
-        new_messages = convo.messages ++ [user_msg]
-
-        # Fire and forget DB storage for the user message
-        async_store_parts(conversation_id, "user", parts, convo.model)
-
-        # Prepare API options
-        api_opts = [
-          system_prompt: convo.system_prompt,
-          temperature: convo.temperature,
-          max_output_tokens: convo.max_output_tokens,
-          tools: convo.tools,
-          thinking_enabled: convo.thinking_enabled,
-          thinking_budget: convo.thinking_budget
-        ]
-
-        # Call Gemini
-        case Echo.Agents.API.generate_content(new_messages, api_opts) do
-          {:ok, response} ->
-            # Extract AI parts directly
-            case extract_parts(response) do
-              {:ok, ai_parts} ->
-                # Append AI message
-                ai_msg = %{"role" => "model", "parts" => ai_parts}
-                updated_convo = %{convo | messages: new_messages ++ [ai_msg]}
-
-                state = Map.put(state, conversation_id, updated_convo)
-
-                # Fire and forget DB storage for the AI response
-                async_store_parts(conversation_id, "model", ai_parts, convo.model)
-
-                {:reply, {:ok, ai_parts}, state}
-
-              {:error, reason} ->
-                {:reply, {:error, reason}, state}
-            end
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
-    end
-  end
-
-  @impl true
-  def handle_cast({:kill_conversation, conversation_id}, state) do
-    state = Map.delete(state, conversation_id)
-    {:noreply, state}
-  end
-
-  # --- Internal Helpers ---
-
-  defp extract_parts(%{
-         "candidates" => [%{"content" => %{"parts" => parts}} | _]
-       }) do
-    {:ok, parts}
-  end
-
-  defp extract_parts(%{
-         "candidates" => [%{"finishReason" => reason, "finishMessage" => message} | _]
-       }) do
-    Logger.error("Gemini API returned finish reason: #{reason} with message: #{message}")
-    {:error, {:gemini_error, reason, message}}
-  end
-
-  defp extract_parts(%{
-         "candidates" => [%{"finishReason" => reason} | _]
-       }) do
-    Logger.error("Gemini API returned finish reason: #{reason}")
-    {:error, {:gemini_error, reason}}
-  end
-
-  defp extract_parts(response) do
-    Logger.error("Failed to extract parts from Gemini response: #{inspect(response)}")
-    {:error, :unexpected_response_format}
-  end
-
-  # Log silently by rescuing errors
-  defp async_store_parts(session_id, role, parts, model) do
-    Task.start(fn ->
-      Enum.each(parts, fn part ->
-        attrs =
-          part_to_attrs(part)
-          |> Map.merge(%{
-            session_id: session_id,
-            role: role,
-            model: model
-          })
-
-        try do
-          case Echo.Agent.create_message(attrs) do
-            {:ok, _} ->
-              :ok
-
-            {:error, changeset} ->
-              Logger.warning("Failed to store async ai_message: #{inspect(changeset.errors)}")
-          end
-        rescue
-          e ->
-            Logger.error("Exception storing async ai_message: #{inspect(e)}")
-        end
-      end)
+    with_process(conversation_id, fn pid ->
+      ConversationServer.content(pid, content_blocks, timeout)
     end)
   end
 
-  defp part_to_attrs(%{"text" => text}) do
-    %{type: "text", content: text}
+  @doc """
+  Kills (removes) a conversation process.
+  """
+  def kill_conversation(conversation_id) do
+    with_process(conversation_id, fn pid ->
+      ConversationServer.kill(pid)
+    end)
   end
 
-  defp part_to_attrs(%{"functionCall" => call}) do
-    %{type: "functionCall", payload: call}
-  end
+  defp with_process(conversation_id, callback) do
+    case Registry.lookup(Echo.Agents.ConversationRegistry, conversation_id) do
+      [{pid, _}] ->
+        callback.(pid)
 
-  defp part_to_attrs(%{"functionResponse" => resp}) do
-    %{type: "functionResponse", payload: resp}
-  end
-
-  defp part_to_attrs(%{"inlineData" => data}) do
-    %{type: "document", payload: data}
-  end
-
-  defp part_to_attrs(part) do
-    %{type: "unknown", payload: part}
+      [] ->
+        {:error, :conversation_not_found}
+    end
   end
 end
