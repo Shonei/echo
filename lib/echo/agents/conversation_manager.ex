@@ -50,7 +50,7 @@ defmodule Echo.Agents.ConversationManager do
   Sends a message to a conversation.
   Returns `{:ok, parts}` or an error.
   """
-  def message(conversation_id, message, timeout \\ 120_000) do
+  def message(conversation_id, message, timeout \\ 300_000) do
     with_process(conversation_id, fn pid ->
       ConversationServer.message(pid, message, timeout)
     end)
@@ -60,7 +60,7 @@ defmodule Echo.Agents.ConversationManager do
   Sends content blocks (e.g., function responses) to a conversation.
   Returns `{:ok, parts}` or an error.
   """
-  def content(conversation_id, content_blocks, timeout \\ 120_000) do
+  def content(conversation_id, content_blocks, timeout \\ 300_000) do
     with_process(conversation_id, fn pid ->
       ConversationServer.content(pid, content_blocks, timeout)
     end)
