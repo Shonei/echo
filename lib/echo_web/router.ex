@@ -18,10 +18,15 @@ defmodule EchoWeb.Router do
   end
 
   defp require_basic_auth(conn, _opts) do
-    auth_config = Application.fetch_env!(:echo, :auth)
-    username = Keyword.fetch!(auth_config, :username)
-    password = Keyword.fetch!(auth_config, :password)
-    Plug.BasicAuth.basic_auth(conn, username: username, password: password)
+    if auth_config = Application.get_env(:echo, :auth) do
+      username = Keyword.fetch!(auth_config, :username)
+      password = Keyword.fetch!(auth_config, :password)
+      Plug.BasicAuth.basic_auth(conn, username: username, password: password)
+    else
+      conn
+      |> Plug.Conn.send_resp(:unauthorized, "Authentication not configured")
+      |> Plug.Conn.halt()
+    end
   end
 
   pipeline :api do
@@ -70,6 +75,7 @@ defmodule EchoWeb.Router do
     get "/chat/:room", ChatWebController, :room
 
     get "/assets", AssetUIController, :index
+    get "/assets/:id", AssetUIController, :show
     post "/assets", AssetUIController, :create
     delete "/assets/:id", AssetUIController, :delete
     # Workaround for phoenix_html method=delete simulating via POST

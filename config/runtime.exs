@@ -37,7 +37,7 @@ username = System.get_env("USERNAME")
 password = System.get_env("PASSWORD")
 jwt_secret = System.get_env("JWT_SECRET")
 
-if username && password do
+if username && password && jwt_secret do
   config :echo, :auth,
     username: username,
     password: password,
