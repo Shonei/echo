@@ -33,15 +33,15 @@ end
 
 # Auth configuration
 # Only load if username and password are provided
-blogs_username = System.get_env("BLOGS_USERNAME")
-blogs_password = System.get_env("BLOGS_PASSWORD")
-blogs_auth_secret = System.get_env("BLOGS_AUTH_SECRET")
+username = System.get_env("USERNAME")
+password = System.get_env("PASSWORD")
+jwt_secret = System.get_env("JWT_SECRET")
 
-if blogs_username && blogs_password do
+if username && password && jwt_secret do
   config :echo, :auth,
-    username: blogs_username,
-    password: blogs_password,
-    secret: blogs_auth_secret
+    username: username,
+    password: password,
+    secret: jwt_secret
 end
 
 # S3 client secret access key (used in all environments)

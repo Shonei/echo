@@ -317,13 +317,4 @@ defmodule Echo.Storage.Assets do
       "/#{path}"
     end
   end
-
-  defp extract_path_from_url(url) do
-    config = Application.get_env(:echo, Echo.Storage.S3Client, [])
-    bucket = Keyword.get(config, :bucket, "")
-    # Remove endpoint and bucket from URL to get the path
-    url
-    |> String.split("/#{bucket}/", parts: 2)
-    |> List.last()
-  end
 end

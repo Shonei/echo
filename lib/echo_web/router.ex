@@ -14,6 +14,19 @@ defmodule EchoWeb.Router do
     plug :put_root_layout, html: {EchoWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :require_basic_auth
+  end
+
+  defp require_basic_auth(conn, _opts) do
+    if auth_config = Application.get_env(:echo, :auth) do
+      username = Keyword.fetch!(auth_config, :username)
+      password = Keyword.fetch!(auth_config, :password)
+      Plug.BasicAuth.basic_auth(conn, username: username, password: password)
+    else
+      conn
+      |> Plug.Conn.send_resp(:unauthorized, "Authentication not configured")
+      |> Plug.Conn.halt()
+    end
   end
 
   pipeline :api do
@@ -62,6 +75,7 @@ defmodule EchoWeb.Router do
     get "/chat/:room", ChatWebController, :room
 
     get "/assets", AssetUIController, :index
+    get "/assets/:id", AssetUIController, :show
     post "/assets", AssetUIController, :create
     delete "/assets/:id", AssetUIController, :delete
     # Workaround for phoenix_html method=delete simulating via POST
@@ -69,38 +83,17 @@ defmodule EchoWeb.Router do
 
     get "/ai-messages", AIMessageController, :index
     get "/ai-messages/:id", AIMessageController, :show
-  end
 
-  scope "/echo", EchoWeb do
-    pipe_through :browser
-
-    get "/request", UIController, :requests
-    get "/request/:id", UIController, :request_detail
+    scope "/echo" do
+      get "/request", UIController, :requests
+      get "/request/:id", UIController, :request_detail
+    end
   end
 
   scope "/api/v1", EchoWeb do
     pipe_through :api
 
     post "/login", LoginController, :create
-
-    get "/chat/rooms", ChatController, :index
-    get "/chat/:room/messages", ChatController, :messages
-    post "/chat/:room/messages", ChatController, :create_message
-
-    get "/rooms", ChatRoomController, :index
-    post "/rooms", ChatRoomController, :create
-    put "/rooms/:id", ChatRoomController, :update
-
-    scope "/audit" do
-      pipe_through EchoWeb.Plugs.AuditAuth
-      post "/sessions", AuditController, :create_session
-      post "/events", AuditController, :create_event
-    end
-
-    scope "/audit" do
-      get "/sessions", AuditController, :index
-      get "/sessions/:session_id/events", AuditController, :events
-    end
 
     resources "/blogs", BlogController, only: [:index, :show] do
       resources "/revisions", RevisionController, only: [:index]
@@ -149,11 +142,6 @@ defmodule EchoWeb.Router do
       pipe_through :echo
       match :*, "/*path", RequestController, :any
     end
-  end
-
-  scope "/echo", EchoWeb do
-    pipe_through :echo
-    match :*, "/*path", RequestController, :any
   end
 
   # Enable LiveDashboard in development
