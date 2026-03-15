@@ -29,25 +29,34 @@
           {Calendar.strftime(message.inserted_at, "%H:%M:%S")}
         </div>
       </div>
-      
+
       <div class="prose prose-sm max-w-none text-gray-800">
         <pre :if={message.type == "text" && message.content} class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{message.content}</pre>
-        
+
         <div :if={message.type == "functionCall"} class="bg-gray-900 text-green-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
           <span class="mb-1 text-gray-400">Function Call:</span>
           <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
-        
+
         <div :if={message.type == "functionResponse"} class="bg-gray-100 text-gray-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-gray-200 flex flex-col">
           <span class="mb-1 text-gray-500">Function Response:</span>
           <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
-        <div :if={message.type == "document"} class="bg-blue-50 text-blue-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-blue-200 flex flex-col">
-          <span class="mb-1 font-semibold">Document Attachment</span>
-          <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
+        <div :if={message.type == "document"} class="bg-blue-50 text-blue-800 p-3 rounded-md text-xs mt-2 border border-blue-200 flex flex-col">
+          <span class="mb-2 font-semibold">Document Attachment</span>
+          <%= if is_map(message.payload) && is_binary(message.payload["mimeType"]) && String.starts_with?(message.payload["mimeType"], "image/") do %>
+            <img
+              src={"data:#{message.payload["mimeType"]};base64,#{message.payload["data"]}"}
+              alt="Image attachment"
+              class="max-w-full rounded-md border border-blue-200"
+            />
+            <span class="mt-1 text-blue-500 text-xs"><%= message.payload["mimeType"] %></span>
+          <% else %>
+            <pre class="bg-transparent p-0 m-0 border-0 overflow-x-auto">{Jason.encode!(message.payload, pretty: true)}</pre>
+          <% end %>
         </div>
-        
+
         <div :if={message.type not in ["text", "functionCall", "functionResponse", "document"]} class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col">
           <span class="mb-1">Unknown Type ({message.type}):</span>
           <pre class="bg-transparent p-0 m-0 border-0">{inspect(message.payload)}</pre>
@@ -55,7 +64,7 @@
       </div>
     </div>
   </div>
-  
+
   <div :if={length(@messages) == 0} class="p-8 text-center text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200 my-6">
     No messages found for this session.
   </div>
