@@ -5,10 +5,11 @@ defmodule EchoWeb.LoginController do
   @ttl 8 * 60 * 60
 
   def create(conn, params) do
-    case Application.fetch_env(:echo, :auth) do
-      {:ok, auth_config} ->
-        handle_login(conn, params, auth_config)
-
+    with {:ok, auth_config} <- Application.fetch_env(:echo, :auth),
+         {:ok, username} <- Keyword.fetch(auth_config, :username),
+         {:ok, password} <- Keyword.fetch(auth_config, :password) do
+      handle_login(conn, params, username, password, auth_config[:secret])
+    else
       :error ->
         conn
         |> put_status(:internal_server_error)
@@ -16,14 +17,11 @@ defmodule EchoWeb.LoginController do
     end
   end
 
-  defp handle_login(conn, params, auth_config) do
-    expected_username = auth_config[:username]
-    expected_password = auth_config[:password]
-
+  defp handle_login(conn, params, expected_username, expected_password, secret) do
     case get_credentials(conn, params) do
       {u, p} when u == expected_username and p == expected_password ->
         # Generate Token
-        signer = Joken.Signer.create("HS256", auth_config[:secret])
+        signer = Joken.Signer.create("HS256", secret)
 
         case Joken.generate_and_sign(
                %{},
