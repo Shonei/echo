@@ -1,6 +1,12 @@
 defmodule EchoWeb.Router do
   use EchoWeb, :router
 
+  import Plug.BasicAuth
+
+  auth_config = Application.fetch_env!(:echo, :auth)
+  @username Keyword.fetch!(auth_config, :username)
+  @password Keyword.fetch!(auth_config, :password)
+
   pipeline :browser do
     plug Plug.Parsers,
       parsers: [:urlencoded, :multipart, :json],
@@ -14,6 +20,7 @@ defmodule EchoWeb.Router do
     plug :put_root_layout, html: {EchoWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
+    plug :basic_auth, username: @username, password: @password
   end
 
   pipeline :api do
@@ -69,38 +76,17 @@ defmodule EchoWeb.Router do
 
     get "/ai-messages", AIMessageController, :index
     get "/ai-messages/:id", AIMessageController, :show
-  end
 
-  scope "/echo", EchoWeb do
-    pipe_through :browser
-
-    get "/request", UIController, :requests
-    get "/request/:id", UIController, :request_detail
+    scope "/echo" do
+      get "/request", UIController, :requests
+      get "/request/:id", UIController, :request_detail
+    end
   end
 
   scope "/api/v1", EchoWeb do
     pipe_through :api
 
     post "/login", LoginController, :create
-
-    get "/chat/rooms", ChatController, :index
-    get "/chat/:room/messages", ChatController, :messages
-    post "/chat/:room/messages", ChatController, :create_message
-
-    get "/rooms", ChatRoomController, :index
-    post "/rooms", ChatRoomController, :create
-    put "/rooms/:id", ChatRoomController, :update
-
-    scope "/audit" do
-      pipe_through EchoWeb.Plugs.AuditAuth
-      post "/sessions", AuditController, :create_session
-      post "/events", AuditController, :create_event
-    end
-
-    scope "/audit" do
-      get "/sessions", AuditController, :index
-      get "/sessions/:session_id/events", AuditController, :events
-    end
 
     resources "/blogs", BlogController, only: [:index, :show] do
       resources "/revisions", RevisionController, only: [:index]
@@ -149,11 +135,6 @@ defmodule EchoWeb.Router do
       pipe_through :echo
       match :*, "/*path", RequestController, :any
     end
-  end
-
-  scope "/echo", EchoWeb do
-    pipe_through :echo
-    match :*, "/*path", RequestController, :any
   end
 
   # Enable LiveDashboard in development

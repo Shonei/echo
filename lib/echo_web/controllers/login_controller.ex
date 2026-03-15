@@ -5,20 +5,13 @@ defmodule EchoWeb.LoginController do
   @ttl 8 * 60 * 60
 
   def create(conn, params) do
-    case Application.fetch_env(:echo, :auth) do
-      {:ok, auth_config} ->
-        handle_login(conn, params, auth_config)
-
-      :error ->
-        conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "Auth not configured"})
-    end
+    auth_config = Application.fetch_env!(:echo, :auth)
+    handle_login(conn, params, auth_config)
   end
 
   defp handle_login(conn, params, auth_config) do
-    expected_username = auth_config[:username]
-    expected_password = auth_config[:password]
+    expected_username = Keyword.fetch!(auth_config, :username)
+    expected_password = Keyword.fetch!(auth_config, :password)
 
     case get_credentials(conn, params) do
       {u, p} when u == expected_username and p == expected_password ->
