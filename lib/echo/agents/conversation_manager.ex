@@ -10,6 +10,7 @@ defmodule Echo.Agents.Conversation do
             thinking_budget: nil,
             tools: nil,
             model: nil,
+            response_modalities: nil,
             messages: []
 end
 

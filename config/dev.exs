@@ -99,4 +99,4 @@ config :echo, :auth,
   password: "password",
   secret: "secret"
 
-config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"
+config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview", log_debug_body: true

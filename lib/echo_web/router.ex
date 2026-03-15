@@ -113,6 +113,7 @@ defmodule EchoWeb.Router do
       put "/conversation/:id/message", AIConversationController, :message
       put "/conversation/:id/content", AIConversationController, :content
       post "/agents/editor", AIConversationController, :editor
+      post "/agents/photographer", AIConversationController, :photographer
     end
 
     # List assets endpoint (uses JSON parsing)

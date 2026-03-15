@@ -6,7 +6,7 @@ defmodule Echo.Agents.API do
   use GenServer
   require Logger
 
-  defstruct [:api_key, :http_client, :model]
+  defstruct [:api_key, :http_client, :model, :log_debug_body]
 
   # --- Client API ---
 
@@ -43,12 +43,19 @@ defmodule Echo.Agents.API do
     api_key = Keyword.get(config, :api_key)
     http_client = Keyword.get(config, :http_client, Finch)
     model = Keyword.get(config, :model)
+    log_debug_body = Keyword.get(config, :log_debug_body, false)
 
     if is_nil(api_key) || api_key == "" do
       Logger.warning("GEMINI_API_KEY is not set. API calls will fail.")
     end
 
-    {:ok, %__MODULE__{api_key: api_key, http_client: http_client, model: model}}
+    {:ok,
+     %__MODULE__{
+       api_key: api_key,
+       http_client: http_client,
+       model: model,
+       log_debug_body: log_debug_body
+     }}
   end
 
   @impl true
@@ -90,8 +97,10 @@ defmodule Echo.Agents.API do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
+      model = Keyword.get(opts, :model, state.model)
+
       url =
-        "https://generativelanguage.googleapis.com/v1beta/models/#{state.model}:generateContent"
+        "https://generativelanguage.googleapis.com/v1beta/models/#{model}:generateContent"
 
       headers = [
         {"Content-Type", "application/json"},
@@ -105,6 +114,10 @@ defmodule Echo.Agents.API do
       payload = append_options(payload, opts)
 
       body = Jason.encode!(payload)
+
+      if state.log_debug_body do
+        Logger.info("Gemini API Request Body", %{body: body, url: url, headers: headers})
+      end
 
       # Using the http client from state (defaults to Finch)
       req = state.http_client.build(:post, url, headers, body)
@@ -190,6 +203,7 @@ defmodule Echo.Agents.API do
       %{}
       |> maybe_put(:temperature, opts[:temperature])
       |> maybe_put(:maxOutputTokens, opts[:max_output_tokens])
+      |> maybe_put(:responseModalities, opts[:response_modalities])
 
     config =
       if opts[:thinking_enabled] do

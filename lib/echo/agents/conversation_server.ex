@@ -54,6 +54,8 @@ defmodule Echo.Agents.ConversationServer do
       thinking_budget: Map.get(opts, :thinking_budget) || Map.get(opts, "thinking_budget"),
       tools: Map.get(opts, :tools) || Map.get(opts, "tools"),
       model: Map.get(opts, :model) || Map.get(opts, "model"),
+      response_modalities:
+        Map.get(opts, :response_modalities) || Map.get(opts, "response_modalities"),
       messages: []
     }
 
@@ -89,7 +91,9 @@ defmodule Echo.Agents.ConversationServer do
       max_output_tokens: convo.max_output_tokens,
       tools: convo.tools,
       thinking_enabled: convo.thinking_enabled,
-      thinking_budget: convo.thinking_budget
+      thinking_budget: convo.thinking_budget,
+      response_modalities: convo.response_modalities,
+      model: convo.model
     ]
 
     # Call Gemini
