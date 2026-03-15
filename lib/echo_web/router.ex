@@ -1,12 +1,6 @@
 defmodule EchoWeb.Router do
   use EchoWeb, :router
 
-  import Plug.BasicAuth
-
-  auth_config = Application.fetch_env!(:echo, :auth)
-  @username Keyword.fetch!(auth_config, :username)
-  @password Keyword.fetch!(auth_config, :password)
-
   pipeline :browser do
     plug Plug.Parsers,
       parsers: [:urlencoded, :multipart, :json],
@@ -20,7 +14,14 @@ defmodule EchoWeb.Router do
     plug :put_root_layout, html: {EchoWeb.Layouts, :root}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
-    plug :basic_auth, username: @username, password: @password
+    plug :require_basic_auth
+  end
+
+  defp require_basic_auth(conn, _opts) do
+    auth_config = Application.fetch_env!(:echo, :auth)
+    username = Keyword.fetch!(auth_config, :username)
+    password = Keyword.fetch!(auth_config, :password)
+    Plug.BasicAuth.basic_auth(conn, username: username, password: password)
   end
 
   pipeline :api do
