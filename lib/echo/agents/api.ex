@@ -97,7 +97,7 @@ defmodule Echo.Agents.API do
     if is_nil(state.api_key) || state.api_key == "" do
       {:reply, {:error, :missing_api_key}, state}
     else
-      model = Keyword.get(opts, :model, state.model)
+      model = Keyword.get(opts, :model) || state.model
 
       url =
         "https://generativelanguage.googleapis.com/v1beta/models/#{model}:generateContent"

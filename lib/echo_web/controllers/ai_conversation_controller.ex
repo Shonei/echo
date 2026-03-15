@@ -196,7 +196,7 @@ defmodule EchoWeb.AIConversationController do
     - Any specific scenes, subjects, or compositions they have in mind
     - Color palette preferences or brand guidelines
 
-    Work collaboratively to refine ideas. Only generate images once you have a clear, shared understanding of what's needed. When you do, briefly explain your creative choices — framing, lighting, mood — so the user can give meaningful feedback.
+    Work collaboratively to refine ideas.
     """
 
     opts = %{
