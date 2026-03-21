@@ -79,7 +79,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (inlineData.mimeType && inlineData.mimeType.startsWith("image/")) {
       contentHtml = `<img src="data:${escapeHtml(inlineData.mimeType)};base64,${escapeHtml(inlineData.data)}" class="max-w-full rounded-md border border-gray-200" />`;
     } else {
-      contentHtml = `<pre class="bg-transparent p-0 m-0 border-0 overflow-x-auto">${escapeHtml(JSON.stringify(inlineData, null, 2))}</pre>`;
+      contentHtml = `<pre class="overflow-x-auto">${escapeHtml(JSON.stringify(inlineData, null, 2))}</pre>`;
     }
     appendMessage(role, 'document', contentHtml);
   }
@@ -131,7 +131,7 @@ document.addEventListener("DOMContentLoaded", function () {
             appendDocumentPart("model", part.inlineData);
           } else {
              // Handle raw JSON display for other types (function calls, etc)
-             const contentHtml = `<pre class="bg-transparent p-0 m-0 border-0 overflow-x-auto">${escapeHtml(JSON.stringify(part, null, 2))}</pre>`;
+             const contentHtml = `<pre class="overflow-x-auto">${escapeHtml(JSON.stringify(part, null, 2))}</pre>`;
              appendMessage("model", Object.keys(part)[0] || "unknown", contentHtml);
           }
         });
