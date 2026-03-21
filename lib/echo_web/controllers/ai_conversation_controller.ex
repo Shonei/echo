@@ -13,7 +13,8 @@ defmodule EchoWeb.AIConversationController do
         "thinking_enabled",
         "thinking_budget",
         "tools",
-        "response_modalities"
+        "response_modalities",
+        "model"
       ])
 
     case ConversationManager.start_conversation(opts) do

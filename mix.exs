@@ -63,7 +63,8 @@ defmodule Echo.MixProject do
       {:ex_llm, "~> 0.8.1"},
       {:cors_plug, "~> 3.0"},
       {:joken, "~> 2.5"},
-      {:vix, "~> 0.37"}
+      {:vix, "~> 0.37"},
+      {:earmark, "~> 1.4"}
     ]
   end
 

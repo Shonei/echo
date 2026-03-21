@@ -84,10 +84,20 @@ defmodule EchoWeb.Router do
     get "/ai-messages", AIMessageController, :index
     get "/ai-messages/:id", AIMessageController, :show
 
+    get "/agent-chat/new", AgentChatController, :new
+    post "/agent-chat", AgentChatController, :create
+    get "/agent-chat/:id", AgentChatController, :show
+
     scope "/echo" do
       get "/request", UIController, :requests
       get "/request/:id", UIController, :request_detail
     end
+  end
+
+  scope "/api/agent-chat", EchoWeb do
+    pipe_through :api
+
+    put "/:id/content", AgentChatController, :content
   end
 
   scope "/api/v1", EchoWeb do

@@ -1,0 +1,76 @@
+<div class="container mx-auto px-4 py-8 max-w-4xl flex flex-col h-[calc(100vh-4rem)]">
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Agent Conversation</h1>
+      <p class="text-sm text-gray-500 mt-1">Session ID: <span id="session-id">{@session_id}</span></p>
+    </div>
+    <a href={~p"/agent-chat/new"} class="text-blue-600 hover:text-blue-800 flex items-center">
+      <.icon name="hero-plus" class="w-4 h-4 mr-2" /> New Agent
+    </a>
+  </div>
+
+  <div id="messages-container" class="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4 space-y-6">
+    <div :for={message <- @messages} class={[
+      "p-6 rounded-xl shadow-sm border",
+      message.role == "system" && "bg-gray-100 border-gray-200",
+      message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
+      message.role == "model" && "bg-white border-gray-200 mr-8",
+      message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
+    ]}>
+      <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+        <div class="flex items-center space-x-2">
+          <.icon :if={message.role == "system"} name="hero-cog" class="w-5 h-5 text-gray-500" />
+          <.icon :if={message.role == "user"} name="hero-user" class="w-5 h-5 text-blue-500" />
+          <.icon :if={message.role == "model"} name="hero-cpu" class="w-5 h-5 text-purple-500" />
+          <span class="font-semibold text-gray-700 capitalize">{message.role}</span>
+          <span class="text-xs text-gray-400 ml-2">{message.type}</span>
+        </div>
+        <div class="text-xs text-gray-400">
+          {Calendar.strftime(message.inserted_at, "%H:%M:%S")}
+        </div>
+      </div>
+
+      <div class="prose prose-sm max-w-none text-gray-800">
+        <div :if={message.type == "text" && message.content}>
+          {raw(Earmark.as_html!(message.content))}
+        </div>
+
+        <div :if={message.type == "document"} class="mt-2">
+          <%= if is_map(message.payload) && is_binary(message.payload["mimeType"]) && String.starts_with?(message.payload["mimeType"], "image/") do %>
+            <img src={"data:#{message.payload["mimeType"]};base64,#{message.payload["data"]}"} class="max-w-full rounded-md border border-gray-200" />
+          <% else %>
+            <pre class="overflow-x-auto">{Jason.encode!(message.payload, pretty: true)}</pre>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <form id="agent-chat-form" class="flex items-end space-x-4">
+      <div class="flex-1">
+        <label for="chat-input" class="sr-only">Message</label>
+        <textarea
+          id="chat-input"
+          rows="2"
+          class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm resize-none"
+          placeholder="Type your message here..."
+        ></textarea>
+      </div>
+      <button
+        type="submit"
+        id="send-button"
+        class="inline-flex items-center justify-center p-3 border border-transparent rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+      >
+        <.icon name="hero-paper-airplane" class="w-5 h-5" />
+      </button>
+    </form>
+    <div id="loading-indicator" class="hidden mt-2 text-sm text-gray-500 flex items-center">
+      <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      Agent is typing...
+    </div>
+  </div>
+</div>
