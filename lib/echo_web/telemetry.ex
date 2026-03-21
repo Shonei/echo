@@ -31,7 +31,33 @@ defmodule EchoWeb.Telemetry do
         %{}
       )
 
+    :ok =
+      :telemetry.attach_many(
+        "echo-storage-instrumentation",
+        [
+          [:echo, :storage, :image, :process, :stop],
+          [:echo, :storage, :s3, :download, :stop],
+          [:echo, :storage, :s3, :upload, :stop]
+        ],
+        &log_storage_event/4,
+        %{}
+      )
+
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def log_storage_event(event_name, measurements, metadata, _config) do
+    action = event_name |> Enum.drop(-1) |> Enum.join(".")
+    duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
+
+    Logger.info("Storage operation completed",
+      action: action,
+      duration_ms: duration_ms,
+      path: metadata[:path],
+      width: metadata[:width],
+      target_ext: metadata[:target_ext],
+      file_size_bytes: metadata[:file_size_bytes]
+    )
   end
 
   def log_http_request(_event, measurements, metadata, _config) do
@@ -40,7 +66,8 @@ defmodule EchoWeb.Telemetry do
     status = Map.get(metadata.conn, :status)
 
     Logger.info("HTTP Request",
-      duration: Map.get(measurements, :duration),
+      duration_ms:
+        System.convert_time_unit(Map.get(measurements, :duration), :native, :millisecond),
       path: path,
       method: method,
       status: status
@@ -112,6 +139,20 @@ defmodule EchoWeb.Telemetry do
         unit: {:native, :millisecond},
         description:
           "The time the connection spent waiting before being checked out for the query"
+      ),
+
+      # Storage Metrics
+      summary("echo.storage.s3.upload.stop.duration",
+        unit: {:native, :millisecond},
+        description: "Time spent uploading objects to S3"
+      ),
+      summary("echo.storage.s3.download.stop.duration",
+        unit: {:native, :millisecond},
+        description: "Time spent downloading objects from S3"
+      ),
+      summary("echo.storage.image.process.stop.duration",
+        unit: {:native, :millisecond},
+        description: "Time spent processing/resizing images"
       ),
 
       # VM Metrics

@@ -34,7 +34,7 @@ defmodule EchoWeb.Router do
       parsers: [:urlencoded, :multipart, :json],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
-      length: 8_000_000
+      length: 10_000_000
 
     plug :accepts, ["json"]
     plug :fetch_session

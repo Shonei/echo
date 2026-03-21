@@ -104,13 +104,43 @@ defmodule Echo.Storage.S3Client do
 
   @impl true
   def handle_call({:get_object, path}, _from, state) do
-    result = do_get_object(state, path)
+    result =
+      :telemetry.span(
+        [:echo, :storage, :s3, :download],
+        %{path: path},
+        fn ->
+          res = do_get_object(state, path)
+
+          metadata =
+            case res do
+              {:ok, body, _content_type} ->
+                %{path: path, file_size_bytes: byte_size(body)}
+
+              _error ->
+                %{path: path}
+            end
+
+          {res, metadata}
+        end
+      )
+
     {:reply, result, state}
   end
 
   @impl true
   def handle_call({:upload_object, path, body, content_type}, _from, state) do
-    result = do_upload_object(state, path, body, content_type)
+    file_size = byte_size(body)
+
+    result =
+      :telemetry.span(
+        [:echo, :storage, :s3, :upload],
+        %{path: path, content_type: content_type, file_size_bytes: file_size},
+        fn ->
+          res = do_upload_object(state, path, body, content_type)
+          {res, %{path: path, file_size_bytes: file_size}}
+        end
+      )
+
     {:reply, result, state}
   end
 

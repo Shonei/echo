@@ -294,12 +294,21 @@ defmodule Echo.Storage.Assets do
 
   # Resize image and return binary
   defp process_image(body, width, target_ext) do
-    with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, width),
-         {:ok, buffer} <- Image.write_to_buffer(thumbnail, target_ext) do
-      buffer
-    else
-      {:error, reason} -> {:error, reason}
-    end
+    :telemetry.span(
+      [:echo, :storage, :image, :process],
+      %{width: width, target_ext: target_ext},
+      fn ->
+        result =
+          with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, width),
+               {:ok, buffer} <- Image.write_to_buffer(thumbnail, target_ext) do
+            buffer
+          else
+            {:error, reason} -> {:error, reason}
+          end
+
+        {result, %{width: width, target_ext: target_ext}}
+      end
+    )
   end
 
   defp build_asset_url(path) do

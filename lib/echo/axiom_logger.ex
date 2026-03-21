@@ -175,7 +175,7 @@ defmodule Echo.AxiomLogger do
     |> Enum.map(fn {key, value} -> {key, sanitize_value(value)} end)
     |> Enum.into(%{})
     # Remove internal fields
-    |> Map.drop([:pid, :gl, :time])
+    |> Map.drop([:pid, :gl, :time, :file])
   end
 
   defp format_metadata(%{__struct__: _} = metadata) do
@@ -185,7 +185,7 @@ defmodule Echo.AxiomLogger do
 
   defp format_metadata(metadata) when is_map(metadata) do
     metadata
-    |> Map.drop([:pid, :gl, :time])
+    |> Map.drop([:pid, :gl, :time, :file])
     |> sanitize_metadata()
   end
 
