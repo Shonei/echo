@@ -31,7 +31,9 @@
       </div>
 
       <div class="prose prose-sm max-w-none text-gray-800">
-        <pre :if={message.type == "text" && message.content} class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{message.content}</pre>
+        <div :if={message.type == "text" && message.content}>
+          {raw(Earmark.as_html!(message.content))}
+        </div>
 
         <div :if={message.type == "functionCall"} class="bg-gray-900 text-green-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
           <span class="mb-1 text-gray-400">Function Call:</span>
