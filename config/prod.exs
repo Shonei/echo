@@ -32,10 +32,6 @@ config :echo,
   # Axiom API URL (use https://api.eu.axiom.co for EU region)
   axiom_url: "https://api.axiom.co"
 
-config :cors_plug,
-  origin: [~r/^https?:\/\/(.*\.shonei\.me|shonei\.dev|apps\.shonei\.dev)$/],
-  max_age: 86400,
-  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
 
 # S3-compatible storage client configuration for production
 config :echo, Echo.Storage.S3Client,

@@ -42,7 +42,24 @@ defmodule Echo.Storage.S3Client do
       {:ok, body, "image/png"} = S3Client.get_object("images/photo.png")
   """
   def get_object(path) do
-    GenServer.call(__MODULE__, {:get_object, path}, 30_000)
+    :telemetry.span(
+      [:echo, :storage, :s3, :download],
+      %{path: path},
+      fn ->
+        result = GenServer.call(__MODULE__, {:get_object, path}, 30_000)
+
+        metadata =
+          case result do
+            {:ok, body, _content_type} ->
+              %{path: path, file_size_bytes: byte_size(body)}
+
+            _error ->
+              %{path: path}
+          end
+
+        {result, metadata}
+      end
+    )
   end
 
   @doc """
@@ -55,7 +72,16 @@ defmodule Echo.Storage.S3Client do
       :ok = S3Client.upload_object("images/photo.png", binary_data, "image/png")
   """
   def upload_object(path, body, content_type \\ "application/octet-stream") do
-    GenServer.call(__MODULE__, {:upload_object, path, body, content_type}, 60_000)
+    file_size = byte_size(body)
+
+    :telemetry.span(
+      [:echo, :storage, :s3, :upload],
+      %{path: path, content_type: content_type, file_size_bytes: file_size},
+      fn ->
+        result = GenServer.call(__MODULE__, {:upload_object, path, body, content_type}, 60_000)
+        {result, %{path: path, file_size_bytes: file_size}}
+      end
+    )
   end
 
   @doc """
@@ -104,44 +130,12 @@ defmodule Echo.Storage.S3Client do
 
   @impl true
   def handle_call({:get_object, path}, _from, state) do
-    result =
-      :telemetry.span(
-        [:echo, :storage, :s3, :download],
-        %{path: path},
-        fn ->
-          res = do_get_object(state, path)
-
-          metadata =
-            case res do
-              {:ok, body, _content_type} ->
-                %{path: path, file_size_bytes: byte_size(body)}
-
-              _error ->
-                %{path: path}
-            end
-
-          {res, metadata}
-        end
-      )
-
-    {:reply, result, state}
+    {:reply, do_get_object(state, path), state}
   end
 
   @impl true
   def handle_call({:upload_object, path, body, content_type}, _from, state) do
-    file_size = byte_size(body)
-
-    result =
-      :telemetry.span(
-        [:echo, :storage, :s3, :upload],
-        %{path: path, content_type: content_type, file_size_bytes: file_size},
-        fn ->
-          res = do_upload_object(state, path, body, content_type)
-          {res, %{path: path, file_size_bytes: file_size}}
-        end
-      )
-
-    {:reply, result, state}
+    {:reply, do_upload_object(state, path, body, content_type), state}
   end
 
   @impl true

@@ -125,4 +125,9 @@ if config_env() == :prod do
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.
+
+  config :cors_plug,
+    origin: [~r/^https?:\/\/(.*\.shonei\.me|shonei\.dev|apps\.shonei\.dev)$/],
+    max_age: 86400,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
 end
