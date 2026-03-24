@@ -41,3 +41,15 @@ config :echo, Echo.Storage.S3Client,
   access_key_id: System.get_env("S3_ACCESS_KEY_ID")
 
 config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"
+
+config :cors_plug,
+  origin: [
+    "https://shonei.me",
+    "https://shonei.dev",
+    "https://apps.shonei.me",
+    "https://apps.shonei.dev",
+    "https://blogs.shonei.me",
+    "https://blogs.shonei.dev"
+  ],
+  max_age: 86400,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
