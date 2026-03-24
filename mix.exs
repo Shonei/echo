@@ -40,7 +40,7 @@ defmodule Echo.MixProject do
       {:logger_json, "~> 7.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.0.0"},
+      {:phoenix_live_view, "~> 1.1"},
       {:floki, ">= 0.30.0", only: :test},
       {:phoenix_live_dashboard, "~> 0.8.3"},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
@@ -54,16 +54,16 @@ defmodule Echo.MixProject do
        depth: 1},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
-      {:gettext, "~> 0.26"},
+      {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
-      {:dns_cluster, "~> 0.1.1"},
+      {:dns_cluster, "~> 0.2"},
       {:bandit, "~> 1.5"},
       {:bcrypt_elixir, "~> 3.0"},
       {:httpoison, "~> 2.0"},
       {:ex_llm, "~> 0.8.1"},
       {:cors_plug, "~> 3.0"},
       {:joken, "~> 2.5"},
-      {:vix, "~> 0.37"},
+      {:vix, "~> 0.38"},
       {:earmark, "~> 1.4"}
     ]
   end
