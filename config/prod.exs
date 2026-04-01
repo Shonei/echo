@@ -43,13 +43,6 @@ config :echo, Echo.Storage.S3Client,
 config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"
 
 config :cors_plug,
-  origin: [
-    "https://shonei.me",
-    "https://shonei.dev",
-    "https://apps.shonei.me",
-    "https://apps.shonei.dev",
-    "https://blogs.shonei.me",
-    "https://blogs.shonei.dev"
-  ],
+  origin: [~r/^https:\/\/(.*\.)?shonei\.(me|dev)$/],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
