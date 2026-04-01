@@ -21,16 +21,11 @@ defmodule Echo.Storage.S3Client do
         # secret_access_key loaded from S3_SECRET_ACCESS_KEY env var
   """
 
-  use GenServer
   require Logger
 
-  defstruct [:endpoint, :region, :bucket, :access_key_id, :secret_access_key, :http_client]
+  defstruct [:endpoint, :region, :bucket, :access_key_id, :secret_access_key, :finch_name]
 
   # Client API
-
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
 
   @doc """
   Gets an object from storage.
@@ -46,7 +41,7 @@ defmodule Echo.Storage.S3Client do
       [:echo, :storage, :s3, :download],
       %{path: path},
       fn ->
-        result = GenServer.call(__MODULE__, {:get_object, path}, 30_000)
+        result = do_get_object(get_config(), path)
 
         metadata =
           case result do
@@ -78,7 +73,7 @@ defmodule Echo.Storage.S3Client do
       [:echo, :storage, :s3, :upload],
       %{path: path, content_type: content_type, file_size_bytes: file_size},
       fn ->
-        result = GenServer.call(__MODULE__, {:upload_object, path, body, content_type}, 60_000)
+        result = do_upload_object(get_config(), path, body, content_type)
         {result, %{path: path, file_size_bytes: file_size}}
       end
     )
@@ -94,7 +89,7 @@ defmodule Echo.Storage.S3Client do
       {:ok, objects} = S3Client.list_objects("images/")
   """
   def list_objects(prefix \\ "") do
-    GenServer.call(__MODULE__, {:list_objects, prefix}, 30_000)
+    do_list_objects(get_config(), prefix)
   end
 
   @doc """
@@ -107,47 +102,22 @@ defmodule Echo.Storage.S3Client do
       :ok = S3Client.delete_object("images/photo.png")
   """
   def delete_object(path) do
-    GenServer.call(__MODULE__, {:delete_object, path}, 30_000)
+    do_delete_object(get_config(), path)
   end
 
-  # Server Callbacks
+  # Configuration
 
-  @impl true
-  def init(_opts) do
+  defp get_config do
     config = Application.get_env(:echo, __MODULE__, [])
 
-    state = %__MODULE__{
+    %__MODULE__{
       endpoint: Keyword.fetch!(config, :endpoint),
       region: Keyword.get(config, :region, "auto"),
       bucket: Keyword.fetch!(config, :bucket),
       access_key_id: Keyword.fetch!(config, :access_key_id),
       secret_access_key: fetch_secret_access_key(config),
-      http_client: Keyword.get(config, :http_client, HTTPoison)
+      finch_name: Keyword.get(config, :finch_name, Echo.Finch)
     }
-
-    {:ok, state}
-  end
-
-  @impl true
-  def handle_call({:get_object, path}, _from, state) do
-    {:reply, do_get_object(state, path), state}
-  end
-
-  @impl true
-  def handle_call({:upload_object, path, body, content_type}, _from, state) do
-    {:reply, do_upload_object(state, path, body, content_type), state}
-  end
-
-  @impl true
-  def handle_call({:list_objects, prefix}, _from, state) do
-    result = do_list_objects(state, prefix)
-    {:reply, result, state}
-  end
-
-  @impl true
-  def handle_call({:delete_object, path}, _from, state) do
-    result = do_delete_object(state, path)
-    {:reply, result, state}
   end
 
   # Private functions
@@ -162,19 +132,20 @@ defmodule Echo.Storage.S3Client do
     url = build_url(state, path)
     headers = sign_request(state, "GET", path, "", [])
 
-    case state.http_client.get(url, headers, timeout: 30_000, recv_timeout: 30_000) do
-      {:ok, %{status_code: 200, body: body, headers: resp_headers}} ->
+    req = Finch.build(:get, url, headers)
+    case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
+      {:ok, %Finch.Response{status: 200, body: body, headers: resp_headers}} ->
         content_type = get_header(resp_headers, "content-type", "application/octet-stream")
         {:ok, body, content_type}
 
-      {:ok, %{status_code: 404}} ->
+      {:ok, %Finch.Response{status: 404}} ->
         {:error, :not_found}
 
-      {:ok, %{status_code: status, body: body}} ->
+      {:ok, %Finch.Response{status: status, body: body}} ->
         {:error, "HTTP #{status}: #{body}"}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, exception} ->
+        {:error, exception}
     end
   end
 
@@ -190,15 +161,16 @@ defmodule Echo.Storage.S3Client do
     url = build_url(state, path)
     headers = sign_request(state, "PUT", path, body, [{"content-type", content_type}])
 
-    case state.http_client.put(url, body, headers, timeout: 60_000, recv_timeout: 60_000) do
-      {:ok, %{status_code: status}} when status in 200..299 ->
+    req = Finch.build(:put, url, headers, body)
+    case Finch.request(req, state.finch_name, receive_timeout: 60_000) do
+      {:ok, %Finch.Response{status: status}} when status in 200..299 ->
         :ok
 
-      {:ok, %{status_code: status, body: resp_body}} ->
+      {:ok, %Finch.Response{status: status, body: resp_body}} ->
         {:error, "HTTP #{status}: #{resp_body}"}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, exception} ->
+        {:error, exception}
     end
   end
 
@@ -207,15 +179,16 @@ defmodule Echo.Storage.S3Client do
     url = build_url(state, "") <> query
     headers = sign_request(state, "GET", "", "", [], query)
 
-    case state.http_client.get(url, headers, timeout: 30_000, recv_timeout: 30_000) do
-      {:ok, %{status_code: 200, body: body}} ->
+    req = Finch.build(:get, url, headers)
+    case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
+      {:ok, %Finch.Response{status: 200, body: body}} ->
         {:ok, parse_list_objects_response(body)}
 
-      {:ok, %{status_code: status, body: resp_body}} ->
+      {:ok, %Finch.Response{status: status, body: resp_body}} ->
         {:error, "HTTP #{status}: #{resp_body}"}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, exception} ->
+        {:error, exception}
     end
   end
 
@@ -223,18 +196,19 @@ defmodule Echo.Storage.S3Client do
     url = build_url(state, path)
     headers = sign_request(state, "DELETE", path, "", [])
 
-    case state.http_client.delete(url, headers, timeout: 30_000, recv_timeout: 30_000) do
-      {:ok, %{status_code: status}} when status in [200, 204] ->
+    req = Finch.build(:delete, url, headers)
+    case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
+      {:ok, %Finch.Response{status: status}} when status in [200, 204] ->
         :ok
 
-      {:ok, %{status_code: 404}} ->
+      {:ok, %Finch.Response{status: 404}} ->
         {:error, :not_found}
 
-      {:ok, %{status_code: status, body: body}} ->
+      {:ok, %Finch.Response{status: status, body: body}} ->
         {:error, "HTTP #{status}: #{body}"}
 
-      {:error, reason} ->
-        {:error, reason}
+      {:error, exception} ->
+        {:error, exception}
     end
   end
 

@@ -32,7 +32,6 @@ config :echo,
   # Axiom API URL (use https://api.eu.axiom.co for EU region)
   axiom_url: "https://api.axiom.co"
 
-
 # S3-compatible storage client configuration for production
 config :echo, Echo.Storage.S3Client,
   endpoint: System.get_env("S3_ENDPOINT"),
@@ -43,6 +42,6 @@ config :echo, Echo.Storage.S3Client,
 config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"
 
 config :cors_plug,
-  origin: [~r/^https:\/\/(.*\.)?shonei\.(me|dev)$/],
+  origin: [~r/^https:\/\/(.*\.)?shonei\.(me|dev)$/E],
   max_age: 86400,
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS", "PUT"]
