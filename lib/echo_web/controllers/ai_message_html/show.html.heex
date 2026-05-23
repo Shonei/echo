@@ -42,7 +42,17 @@
 
         <div :if={message.type == "functionResponse"} class="bg-gray-100 text-gray-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-gray-200 flex flex-col">
           <span class="mb-1 text-gray-500">Function Response:</span>
-          <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
+          <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
+        </div>
+
+        <div :if={message.type == "toolCall"} class="bg-gray-900 text-blue-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
+          <span class="mb-1 text-gray-400">Server-Side Tool Call:</span>
+          <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
+        </div>
+
+        <div :if={message.type == "toolResponse"} class="bg-blue-50 text-blue-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-blue-200 flex flex-col">
+          <span class="mb-1 text-blue-600">Server-Side Tool Response:</span>
+          <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
         <div :if={message.type == "document"} class="bg-blue-50 text-blue-800 p-3 rounded-md text-xs mt-2 border border-blue-200 flex flex-col">
@@ -59,9 +69,14 @@
           <% end %>
         </div>
 
-        <div :if={message.type not in ["text", "functionCall", "functionResponse", "document"]} class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col">
+        <div :if={message.type not in ["text", "functionCall", "functionResponse", "toolCall", "toolResponse", "document"]} class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col">
           <span class="mb-1">Unknown Type ({message.type}):</span>
-          <pre class="bg-transparent p-0 m-0 border-0">{inspect(message.payload)}</pre>
+          <pre class="bg-transparent p-0 m-0 border-0 text-current">{inspect(message.payload)}</pre>
+        </div>
+
+        <div :if={is_map(message.metadata) && map_size(message.metadata) > 0} class="bg-gray-50 p-3 rounded-md overflow-x-auto text-xs font-mono mt-4 border border-gray-200 flex flex-col">
+          <span class="mb-1 text-gray-500 font-semibold">Metadata (Citations & Context):</span>
+          <pre class="bg-transparent p-0 m-0 border-0 text-gray-700">{Jason.encode!(message.metadata, pretty: true)}</pre>
         </div>
       </div>
     </div>

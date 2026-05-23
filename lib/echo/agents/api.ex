@@ -168,6 +168,8 @@ defmodule Echo.Agents.API do
   defp format_part(%{"text" => _} = part), do: part
   defp format_part(%{"functionCall" => _} = part), do: part
   defp format_part(%{"functionResponse" => _} = part), do: part
+  defp format_part(%{"toolCall" => _} = part), do: part
+  defp format_part(%{"toolResponse" => _} = part), do: part
   defp format_part(%{"inlineData" => %{"mimeType" => _, "data" => _}} = part), do: part
   defp format_part(%{"thought" => _} = part), do: part
 
@@ -187,7 +189,16 @@ defmodule Echo.Agents.API do
   defp maybe_add_tools(payload, nil), do: payload
 
   defp maybe_add_tools(payload, tools) when is_list(tools) do
-    Map.put(payload, :tools, tools)
+    has_functions? = Enum.any?(tools, &Map.has_key?(&1, "functionDeclarations"))
+    has_builtin? = Enum.any?(tools, & (Map.has_key?(&1, "google_search") or Map.has_key?(&1, "url_context")))
+
+    payload = Map.put(payload, :tools, tools)
+
+    if has_functions? and has_builtin? do
+      Map.put(payload, :toolConfig, %{includeServerSideToolInvocations: true})
+    else
+      payload
+    end
   end
 
   defp maybe_add_tools(payload, _), do: payload

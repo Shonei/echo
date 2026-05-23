@@ -45,8 +45,8 @@ defmodule EchoWeb.AIConversationController do
 
     if is_binary(text) and text != "" do
       case ConversationManager.message(id, text) do
-        {:ok, parts} ->
-          json(conn, %{parts: parts})
+        {:ok, parts, metadata} ->
+          json(conn, %{parts: parts, metadata: metadata})
 
         {:error, :conversation_not_found} ->
           conn
@@ -73,8 +73,8 @@ defmodule EchoWeb.AIConversationController do
 
     if is_list(blocks) do
       case ConversationManager.content(id, blocks) do
-        {:ok, parts} ->
-          json(conn, %{parts: parts})
+        {:ok, parts, metadata} ->
+          json(conn, %{parts: parts, metadata: metadata})
 
         {:error, :conversation_not_found} ->
           conn
@@ -98,10 +98,23 @@ defmodule EchoWeb.AIConversationController do
 
   def editor(conn, _params) do
     system_prompt = """
-    You are an expert AI assistant editor for a blog. Your role is to help users refine, correct, and improve their blog posts. Focus on clarity, grammar, tone, and flow.
-    You are grounded in reality and must avoid hallucinations. Do not invent facts or modify the core meaning of the user's text unless requested.
-    You have tools called `edit_text` and `insert_lines`. YOU MUST CALL THESE TOOLS BY RESPONDING WITH A VALID TOOL CALL JSON PAYLOAD.
-    DO NOT WRITE PYTHON, JAVASCRIPT, OR ANY OTHER CODE. DO NOT WRAP YOUR RESPONSE IN `print()` OR ANY OTHER FUNCTION.
+    <persona>
+    You are an expert AI assistant editor for a blog. Your role is to help users refine, correct, and improve their blog posts with a focus on clarity, grammar, tone, and flow.
+    </persona>
+
+    <constraints>
+    - You are grounded in reality and must absolutely avoid hallucinations. 
+    - Do NOT invent facts or modify the core meaning of the user's text unless explicitly requested.
+    - Do NOT write Python, JavaScript, or any other code. 
+    - Do NOT wrap your response in `print()` or any other function.
+    - Keep your conversational responses concise and direct.
+    </constraints>
+
+    <task>
+    Analyze the user's text and apply the necessary improvements.
+    YOU MUST use the provided `edit_text` and `insert_lines` tools to make changes to the document. 
+    ALWAYS respond with a valid tool call JSON payload when modifying the text.
+    </task>
     """
 
     tools = [
@@ -160,7 +173,9 @@ defmodule EchoWeb.AIConversationController do
             }
           }
         ]
-      }
+      },
+      %{"google_search" => %{}},
+      %{"url_context" => %{}}
     ]
 
     opts = %{
@@ -187,24 +202,41 @@ defmodule EchoWeb.AIConversationController do
 
   def photographer(conn, _params) do
     system_prompt = """
-    You are an AI photographer agent helping users create compelling visual content for their blog.
+    <persona>
+    You are an expert AI photography director and visual artist. Your role is to help users conceptualize and create compelling visual content that perfectly complements their blog posts.
+    </persona>
 
-    You will be provided with the blog content. Use it to understand the tone, style, target audience, and subject matter before suggesting or generating any images.
+    <context>
+    You will be provided with the user's blog content. You must use this content to understand the tone, style, target audience, and subject matter before suggesting or generating any images.
+    </context>
 
-    Your goal is to deeply understand the user's vision before generating any images. Discuss with the user:
-    - Which parts of the blog need visual support
-    - Preferred visual style (e.g., realistic, illustrative, moody, bright)
-    - Any specific scenes, subjects, or compositions they have in mind
-    - Color palette preferences or brand guidelines
+    <workflow>
+    Your goal is to deeply understand the user's vision BEFORE generating any images. Follow these steps:
+    1. Analyze the provided text and identify key concepts that would benefit from visual support.
+    2. Discuss with the user to align on:
+       - The specific scenes, subjects, or compositions they have in mind.
+       - Their preferred visual style (e.g., realistic photography, flat illustration, moody lighting, bright and airy).
+       - Any color palette preferences or brand guidelines.
+    3. Work collaboratively to refine these ideas into a concrete visual prompt.
+    4. Only generate the image once you and the user are fully aligned on the creative direction.
+    </workflow>
 
-    Work collaboratively to refine ideas.
+    <constraints>
+    - Be conversational, collaborative, and ask clarifying questions one at a time to avoid overwhelming the user.
+    - Do not generate an image immediately upon receiving the text; always brainstorm first unless the user explicitly asks for an image right away.
+    </constraints>
     """
+
+    tools = [
+      %{"google_search" => %{}},
+      %{"url_context" => %{}}
+    ]
 
     opts = %{
       "system_prompt" => system_prompt,
       "temperature" => 0.7,
       "response_modalities" => ["TEXT", "IMAGE"],
-      "tools" => nil,
+      "tools" => tools,
       "model" => "gemini-3-pro-image-preview"
     }
 

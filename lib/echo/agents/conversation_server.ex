@@ -101,15 +101,15 @@ defmodule Echo.Agents.ConversationServer do
       {:ok, response} ->
         # Extract AI parts directly
         case extract_parts(response) do
-          {:ok, ai_parts} ->
+          {:ok, ai_parts, metadata} ->
             # Append AI message
             ai_msg = %{"role" => "model", "parts" => ai_parts}
             updated_convo = %{convo | messages: new_messages ++ [ai_msg]}
 
             # Fire and forget DB storage for the AI response
-            async_store_parts(convo.id, "model", ai_parts, convo.model)
+            async_store_parts(convo.id, "model", ai_parts, convo.model, metadata)
 
-            {:reply, {:ok, ai_parts}, updated_convo}
+            {:reply, {:ok, ai_parts, metadata}, updated_convo}
 
           {:error, reason} ->
             {:reply, {:error, reason}, convo}
@@ -128,9 +128,16 @@ defmodule Echo.Agents.ConversationServer do
   # --- Internal Helpers ---
 
   defp extract_parts(%{
-         "candidates" => [%{"content" => %{"parts" => parts}} | _]
+         "candidates" => [%{"content" => %{"parts" => parts}} = candidate | _]
        }) do
-    {:ok, parts}
+    grounding = Map.get(candidate, "groundingMetadata")
+    url_context = Map.get(candidate, "urlContextMetadata") || Map.get(candidate, "url_context_metadata")
+
+    metadata = %{}
+    metadata = if grounding, do: Map.put(metadata, "groundingMetadata", grounding), else: metadata
+    metadata = if url_context, do: Map.put(metadata, "urlContextMetadata", url_context), else: metadata
+
+    {:ok, parts, metadata}
   end
 
   defp extract_parts(%{
@@ -153,7 +160,7 @@ defmodule Echo.Agents.ConversationServer do
   end
 
   # Log silently by rescuing errors
-  defp async_store_parts(session_id, role, parts, model) do
+  defp async_store_parts(session_id, role, parts, model, metadata \\ %{}) do
     Task.start(fn ->
       Enum.each(parts, fn part ->
         attrs =
@@ -161,7 +168,8 @@ defmodule Echo.Agents.ConversationServer do
           |> Map.merge(%{
             session_id: session_id,
             role: role,
-            model: model
+            model: model,
+            metadata: metadata
           })
 
         try do
@@ -190,6 +198,14 @@ defmodule Echo.Agents.ConversationServer do
 
   defp part_to_attrs(%{"functionResponse" => resp}) do
     %{type: "functionResponse", payload: resp}
+  end
+
+  defp part_to_attrs(%{"toolCall" => _} = part) do
+    %{type: "toolCall", payload: part}
+  end
+
+  defp part_to_attrs(%{"toolResponse" => _} = part) do
+    %{type: "toolResponse", payload: part}
   end
 
   defp part_to_attrs(%{"inlineData" => data}) do

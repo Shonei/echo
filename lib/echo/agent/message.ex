@@ -24,6 +24,7 @@ defmodule Echo.Agent.Message do
     field :payload, :map
     field :reference_type, :string
     field :reference_id, :integer
+    field :metadata, :map
 
     timestamps(type: :utc_datetime)
   end
@@ -41,7 +42,8 @@ defmodule Echo.Agent.Message do
       :type,
       :payload,
       :reference_type,
-      :reference_id
+      :reference_id,
+      :metadata
     ])
     |> validate_required([:session_id, :role, :type])
   end
