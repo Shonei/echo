@@ -16,10 +16,11 @@ defmodule EchoWeb.RequestJSON do
   end
 
   defp data(%Request{} = request) do
-    body = case request.content_type do
-      "application/json" -> Jason.decode!(request.body)
-      _ -> request.body
-    end
+  body = case {request.content_type, request.body} do                                                                                                                                                                                                                                                                     
+    {_, ""} -> nil                                                                                                                                                                                                                                                                                                        
+    {"application/json" <> _, body} -> Jason.decode!(body)                                                                                                                                                                                                                                                                
+    {_, body} -> body                                                                                                                                                                                                                                                                                                     
+  end
 
     headers = case request.headers do
       "" -> []
