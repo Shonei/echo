@@ -49,6 +49,7 @@ defmodule EchoWeb.Router do
   pipeline :echo do
     # Accept any content type - bypass format checking
     plug EchoWeb.Plugs.AcceptAny
+    plug EchoWeb.Plugs.CacheRawBody
   end
 
   pipeline :assets do
