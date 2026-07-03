@@ -103,16 +103,16 @@ defmodule EchoWeb.AIConversationController do
     </persona>
 
     <constraints>
-    - You are grounded in reality and must absolutely avoid hallucinations. 
+    - You are grounded in reality and must absolutely avoid hallucinations.
     - Do NOT invent facts or modify the core meaning of the user's text unless explicitly requested.
-    - Do NOT write Python, JavaScript, or any other code. 
+    - Do NOT write Python, JavaScript, or any other code.
     - Do NOT wrap your response in `print()` or any other function.
     - Keep your conversational responses concise and direct.
     </constraints>
 
     <task>
     Analyze the user's text and apply the necessary improvements.
-    YOU MUST use the provided `edit_text` and `insert_lines` tools to make changes to the document. 
+    YOU MUST use the provided `edit_text` and `insert_lines` tools to make changes to the document.
     ALWAYS respond with a valid tool call JSON payload when modifying the text.
     </task>
     """
@@ -227,10 +227,7 @@ defmodule EchoWeb.AIConversationController do
     </constraints>
     """
 
-    tools = [
-      %{"google_search" => %{}},
-      %{"url_context" => %{}}
-    ]
+    tools = []
 
     opts = %{
       "system_prompt" => system_prompt,
