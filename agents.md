@@ -92,7 +92,7 @@ The project follows the standard Phoenix context pattern — business logic live
 
 PostgreSQL via `postgrex`. Migrations live in `priv/repo/migrations/`. The database auto-migrates on application boot (via `Ecto.Migrator` in the supervision tree).
 
-The app previously ran on SQLite. `Echo.Release.SqliteImport`, called from the `20260731110200` migration, does a one-off copy of the blogs, revisions and assets out of the old file named by `DATABASE_PATH`. It is a no-op without that file and is removable once the cutover is confirmed.
+The app ran on SQLite until July 2026. Blog data was copied over by a one-off migration that has since been removed (see commit `d11e9cb`). Note that `20260731110100_widen_text_columns` exists because Ecto's `:string` is unlimited text on SQLite but `varchar(255)` on Postgres.
 
 ---
 
@@ -134,7 +134,7 @@ mix assets.deploy
 | `S3_SECRET_ACCESS_KEY` | For assets | S3 secret key for asset storage |
 | `DATABASE_URL` | Prod only | Postgres connection URL |
 | `DATABASE_SSL` | Optional | Set to `true` when the Postgres provider requires TLS |
-| `DATABASE_PATH` | Optional | Old SQLite file to import blog data from, once |
+| `ECTO_IPV6` | Railway | Required on Railway: private network is IPv6-only |
 | `SECRET_KEY_BASE` | Prod only | Phoenix secret key base |
 | `PHX_HOST` | Prod only | Production hostname |
 | `AXIOM_TOKEN` | Prod only | Axiom logging token |

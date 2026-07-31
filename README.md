@@ -76,20 +76,26 @@ To run in production, set these environment variables:
 | `DATABASE_SSL` | Set to `true` for a managed Postgres that requires TLS | No |
 | `POOL_SIZE` | Connection pool size (default `10`) | No |
 | `ECTO_IPV6` | Set to `true` to connect over IPv6 | No |
-| `DATABASE_PATH` | Old SQLite file to import blog data from, once. See below. | No |
 
-### Migrating from SQLite
+On Railway, `ECTO_IPV6=true` is required: the private network resolves
+`*.railway.internal` to an IPv6 address only, so the default IPv4 lookup fails
+with `:nxdomain`.
 
-This app used to run on SQLite. The first boot after switching to Postgres
-imports the blogs, their revisions and the assets from the old file: leave
-`DATABASE_PATH` pointing at it and the `20260731110200` migration copies the rows
-over, logging a count per table. It runs once, does nothing if the file is
-absent, and can be bypassed with `SKIP_SQLITE_IMPORT=true`.
+Migrations run at container start, from the `mix ecto.setup` in `nixpacks.toml`.
 
-Image bytes live in S3, so nothing outside the database needs moving. Keep the
-old file until the import has been verified — it is the only copy. Afterwards,
-unset `DATABASE_PATH` and the migration plus `Echo.Release.SqliteImport` can be
-deleted along with the `exqlite` dependency.
+### Database history
+
+This app ran on SQLite until July 2026. The blogs, their revisions and the assets
+were copied into Postgres by a one-off migration on the first boot, which has
+since been removed along with the `exqlite` dependency — see commit `d11e9cb` if
+it is ever needed again. Image bytes were never in the database (they live in S3),
+so nothing outside it moved.
+
+Two consequences worth knowing when reading old migrations: `:string` is
+unlimited text on SQLite but `varchar(255)` on Postgres, so `20260731110100`
+widens every column that can exceed it; and `requests.body`/`headers`/`url_query`
+were declared `:binary` despite holding JSON text, which made them unusable with
+`LIKE` on Postgres, so the same migration converts them to `text`.
 
 ### Running a Release
 

@@ -61,9 +61,6 @@ if config_env() == :prod do
       For example: postgres://user:pass@host:5432/echo
       """
 
-  # DATABASE_PATH is no longer the database. It is optional now and only names
-  # the old SQLite file to import blog data from on the first boot after the
-  # move to Postgres. See Echo.Release.SqliteImport.
   config :echo, Echo.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),

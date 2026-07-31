@@ -37,10 +37,6 @@ defmodule Echo.MixProject do
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, "~> 0.20"},
-      # Read-only access to the old SQLite database for the one-off data import
-      # in priv/repo/migrations/20260731110200_import_blog_data_from_sqlite.exs.
-      # Remove together with that migration once the cutover is confirmed.
-      {:exqlite, "~> 0.35"},
       {:logger_json, "~> 7.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
