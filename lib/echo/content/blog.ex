@@ -23,23 +23,45 @@ defmodule Echo.Content.Blog do
     timestamps(type: :utc_datetime)
   end
 
+  @metadata_fields [
+    :title,
+    :slug,
+    :status,
+    :icon,
+    :background_image,
+    :cover_image,
+    :thumbnail_image,
+    :description,
+    :tags
+  ]
+
   @doc false
   def changeset(blog, attrs) do
     blog
-    |> cast(attrs, [
-      :title,
-      :slug,
-      :status,
-      :icon,
-      :background_image,
-      :cover_image,
-      :thumbnail_image,
-      :description,
-      :content,
-      :tags
-    ])
+    |> cast(attrs, [:content | @metadata_fields])
+    |> validate()
+  end
+
+  @doc """
+  Changeset for everything except the content.
+
+  Content is saved through `Echo.Content.update_blog_content/2` so that the
+  replaced version is always snapshotted as a revision first; casting it here too
+  would let a metadata update slip past that.
+  """
+  def metadata_changeset(blog, attrs) do
+    blog
+    |> cast(attrs, @metadata_fields)
+    |> validate()
+  end
+
+  defp validate(changeset) do
+    changeset
     |> validate_required([:title, :slug, :status])
     |> validate_inclusion(:status, ["draft", "public", "private"])
+    |> validate_format(:slug, ~r/^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      message: "must be lowercase letters, numbers and dashes"
+    )
     |> unique_constraint(:slug)
   end
 end

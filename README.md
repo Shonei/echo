@@ -37,14 +37,13 @@ Visit [`localhost:4000`](http://localhost:4000) in your browser.
 | | POST | `/chat/:room/messages` | Post message | No |
 | **Rooms** | GET | `/rooms` | List rooms | No |
 | | POST | `/rooms` | Create room | No |
-| **Blogs** | GET | `/blogs` | List blogs | No |
-| | POST | `/blogs` | Create blog | No |
-| | GET | `/blogs/:id` | Get blog | No |
-| | PUT | `/blogs/:id` | Update metadata | No |
-| | PUT | `/blogs/:id/content` | Update content | No |
-| | DELETE | `/blogs/:id` | Delete blog | No |
-| **Revisions**| GET | `/blogs/:id/revisions` | List revisions | No |
-| | POST | `/blogs/:id/revisions` | Create revision | No |
+| **Blogs** | GET | `/blogs` | List blogs (public only unless authenticated) | Optional |
+| | POST | `/blogs` | Create blog | **Yes** (Bearer) |
+| | GET | `/blogs/:id` | Get blog by id or slug (public only unless authenticated) | Optional |
+| | PUT | `/blogs/:id` | Update metadata | **Yes** (Bearer) |
+| | PUT | `/blogs/:id/content` | Update content (snapshots a revision) | **Yes** (Bearer) |
+| | DELETE | `/blogs/:id` | Delete blog | **Yes** (Bearer) |
+| **Revisions**| GET | `/blogs/:id/revisions` | List revisions | **Yes** (Bearer) |
 
 **Authentication**: For protected endpoints, send the header `Authorization: Bearer <AUDIT_PASSWORD>`.
 

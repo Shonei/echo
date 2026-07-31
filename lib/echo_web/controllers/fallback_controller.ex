@@ -22,6 +22,13 @@ defmodule EchoWeb.FallbackController do
     |> render(:"404")
   end
 
+  # This clause handles a required top-level key missing from the request body.
+  def call(conn, {:error, :missing_param, param}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{errors: %{param => ["is required"]}})
+  end
+
   # This clause handles invalid tags format errors.
   def call(conn, {:error, :invalid_tags}) do
     conn

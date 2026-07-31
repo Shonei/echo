@@ -41,9 +41,13 @@ defmodule EchoWeb.Router do
   end
 
   pipeline :api_auth do
-    plug :fetch_session
-    plug EchoWeb.Plugs.ExtractToken
     plug EchoWeb.Plugs.ValidateToken
+  end
+
+  # Reads that are public but show more to an authenticated caller. Never halts;
+  # sets conn.assigns.authenticated? for the controller to branch on.
+  pipeline :api_maybe_auth do
+    plug EchoWeb.Plugs.MaybeAuthenticate
   end
 
   pipeline :echo do
@@ -106,15 +110,16 @@ defmodule EchoWeb.Router do
 
     post "/login", LoginController, :create
 
-    resources "/blogs", BlogController, only: [:index, :show] do
-      resources "/revisions", RevisionController, only: [:index]
+    scope "/" do
+      pipe_through :api_maybe_auth
+      resources "/blogs", BlogController, only: [:index, :show]
     end
 
     scope "/" do
       pipe_through :api_auth
       resources "/blogs", BlogController, only: [:create, :update, :delete]
       put "/blogs/:blog_id/content", BlogController, :update_content
-      resources "/blogs/:blog_id/revisions", RevisionController, only: [:create]
+      get "/blogs/:blog_id/revisions", RevisionController, :index
     end
 
     scope "/ai" do

@@ -2,6 +2,30 @@
 
 The Blog API allows you to create, read, update, and delete blogs. It also features a revision system that automatically tracks content changes.
 
+## Authentication and visibility
+
+Send `Authorization: Bearer <accessToken>` from `POST /api/v1/login`. The token must be sent on **every** request that needs it — it is not persisted in a cookie.
+
+| Endpoint | Anonymous | Authenticated |
+|----------|-----------|---------------|
+| `GET /blogs` | Only `status: "public"` blogs. A `?status=` filter is ignored. | All blogs; `?status=` filters. |
+| `GET /blogs/:id` | Public blogs only; anything else is `404`. | Any blog. |
+| `GET /blogs/:id/revisions` | `401` | Allowed |
+| `POST`, `PUT`, `DELETE` | `401` | Allowed |
+
+Unpublished blogs return `404` rather than `403`, so their existence is not disclosed.
+
+## Revisions
+
+Whenever a save replaces a blog's content, the **previous** content is stored as a revision first. Both writes share a transaction, so a blog is never saved without its backup.
+
+No revision is taken when:
+
+*   the save does not change the content, or
+*   the blog had no content yet (there is nothing to back up).
+
+Revisions are created only by `PUT /blogs/:id/content` — there is no endpoint for creating one by hand. `PUT /blogs/:id` ignores a `content` key precisely so that content cannot be changed without a snapshot. Revisions are identified by their timestamps rather than a version counter, are returned newest first, and carry the note `"Automatic snapshot before save"`.
+
 ## Data Models
 
 ### Blog
@@ -9,22 +33,23 @@ The Blog API allows you to create, read, update, and delete blogs. It also featu
 |-------|------|-------------|
 | `id` | Integer | Unique identifier |
 | `title` | String | Blog title |
-| `slug` | String | Unique URL-friendly slug |
+| `slug` | String | Unique slug; lowercase letters, numbers and dashes only (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) |
 | `status` | String | `draft`, `public`, or `private` |
 | `created_at` | Timestamp | Creation date |
 | `updated_at` | Timestamp | Last update date |
 | `content` | String | Current content |
-| `tags` | String | Comma-separated tags (JSON string) |
+| `tags` | Object | Map of string keys to string values, e.g. `{"lang": "elixir"}`. Anything else is rejected with `422`. |
+
+A blog is fetched by either numeric `id` or `slug`. A numeric identifier is tried as an id first and then as a slug, so an all-digit slug still resolves.
 
 ### Revision
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | Integer | Unique identifier |
 | `blog_id` | Integer | ID of the parent blog |
-| `version` | Integer | Version number |
-| `content` | Text | The blog content at this version |
-| `note` | String | Optional note describing the change |
-| `created_at` | Timestamp | Date of revision |
+| `content` | Text | The blog content as it was before the save that replaced it |
+| `note` | String | Note describing the change |
+| `created_at` | Timestamp | Date of revision; revisions are ordered by this |
 
 ---
 
@@ -34,10 +59,11 @@ Base URL: `/api/v1`
 
 ### 1. List Blogs
 
-Returns a list of all blogs.
+Returns public blogs, or all blogs when authenticated. Optional `?status=draft|public|private` filter, honoured only for authenticated callers.
 
 *   **URL**: `/blogs`
 *   **Method**: `GET`
+*   **Auth**: Optional (changes what is returned)
 *   **Response**: `200 OK`
 
 ```json
@@ -58,10 +84,11 @@ Returns a list of all blogs.
 
 ### 2. Create Blog
 
-Creates a new blog.
+Creates a new blog. `status` defaults to `draft`.
 
 *   **URL**: `/blogs`
 *   **Method**: `POST`
+*   **Auth**: Required
 *   **Payload**:
 
 ```json
@@ -70,19 +97,22 @@ Creates a new blog.
     "title": "New Blog Post",
     "slug": "new-blog-post",
     "status": "draft",
-    "content": "Initial draft content."
+    "content": "Initial draft content.",
+    "tags": { "lang": "elixir" }
   }
 }
 ```
 
 *   **Response**: `201 Created`
+*   **Errors**: `422` if the slug is malformed or already taken, or if `tags` is not a map of strings
 
 ### 3. Get Blog
 
-Retrieves a single blog by ID.
+Retrieves a single blog by ID or slug.
 
 *   **URL**: `/blogs/:id`
 *   **Method**: `GET`
+*   **Auth**: Optional; returns `404` for a non-public blog without it
 *   **Response**: `200 OK`
 
 ```json
@@ -98,10 +128,11 @@ Retrieves a single blog by ID.
 
 ### 4. Update Blog Metadata
 
-Updates a blog's metadata (title, slug, status, tags).
+Updates a blog's metadata. A `content` key is **ignored** — use endpoint 5 so the replaced content is snapshotted.
 
 *   **URL**: `/blogs/:id`
 *   **Method**: `PUT`
+*   **Auth**: Required
 *   **Payload**:
 
 ```json
@@ -109,19 +140,21 @@ Updates a blog's metadata (title, slug, status, tags).
   "blog": {
     "title": "Updated Title",
     "status": "public",
-    "tags": "tech,elixir"
+    "tags": { "lang": "elixir" }
   }
 }
 ```
 
 *   **Response**: `200 OK`
+*   **Errors**: `400` if the `blog` key is missing; `422` on a malformed slug, duplicate slug, or non-map `tags`
 
 ### 5. Update Blog Content
 
-Updates a blog's content.
+Updates a blog's content. The content being replaced is automatically saved as a revision first.
 
 *   **URL**: `/blogs/:id/content`
 *   **Method**: `PUT`
+*   **Auth**: Required
 *   **Payload**:
 
 ```json
@@ -131,6 +164,7 @@ Updates a blog's content.
 ```
 
 *   **Response**: `200 OK`
+*   **Errors**: `400` if the `content` key is missing; `422` if `content` is not a string
 
 ### 6. Delete Blog
 
@@ -138,14 +172,16 @@ Deletes a blog and all its associated revisions.
 
 *   **URL**: `/blogs/:id`
 *   **Method**: `DELETE`
+*   **Auth**: Required
 *   **Response**: `204 No Content`
 
 ### 7. List Revisions
 
-Get the revision history for a specific blog.
+Get the revision history for a specific blog, newest first.
 
 *   **URL**: `/blogs/:id/revisions`
 *   **Method**: `GET`
+*   **Auth**: Required
 *   **Response**: `200 OK`
 
 ```json
@@ -153,32 +189,13 @@ Get the revision history for a specific blog.
   "data": [
     {
       "id": 2,
-      "version": 2,
-      "content": "Old content version 2",
-      "note": "Backup",
+      "blog_id": 1,
+      "content": "The content this save replaced",
+      "note": "Automatic snapshot before save",
       "created_at": "..."
     }
   ]
 }
 ```
 
-### 8. Create Revision
-
-Creates a new revision (snapshot) for a blog.
-
-*   **URL**: `/blogs/:id/revisions`
-*   **Method**: `POST`
-*   **Payload**:
-
-```json
-{
-  "revision": {
-    "content": "Content to save as revision",
-    "version": 3,
-    "note": "Backup before major rewrite"
-  }
-}
-```
-
-*   **Response**: `201 Created`
-
+There is no endpoint for creating a revision by hand; they are only produced by endpoint 5.
