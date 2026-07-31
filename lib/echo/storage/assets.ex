@@ -22,7 +22,9 @@ defmodule Echo.Storage.Assets do
     url_pattern = "%/#{path}"
 
     Asset
-    |> where([a], like(a.url, ^url_pattern))
+    # ilike, not like: SQLite's LIKE is case-insensitive for ASCII but Postgres'
+    # is not, and this lookup backs asset deletion.
+    |> where([a], ilike(a.url, ^url_pattern))
     |> Repo.one()
   end
 

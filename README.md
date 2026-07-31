@@ -6,12 +6,19 @@ Echo is a Phoenix application featuring Chat, Request Echoing, and Audit Logging
 
 To start your Phoenix server:
 
-1.  **Install dependencies**:
+1.  **Start Postgres** (any instance will do):
+    ```bash
+    docker run -d --name echo-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+    ```
+    Connection details default to `postgres:postgres@localhost:5432` and can be
+    overridden with `PGUSER`, `PGPASSWORD`, `PGHOST` and `PGPORT`.
+
+2.  **Install dependencies and create the database**:
     ```bash
     mix setup
     ```
 
-2.  **Environment Variables** (Optional):
+3.  **Environment Variables** (Optional):
     *   `AUDIT_PASSWORD`: Master password for Audit API (POST requests).
 
 
@@ -62,10 +69,27 @@ To run in production, set these environment variables:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `DATABASE_PATH` | Path to SQLite DB (e.g., `/data/echo.db`) | Yes |
+| `DATABASE_URL` | Postgres connection URL (e.g., `postgres://user:pass@host:5432/echo`) | Yes |
 | `SECRET_KEY_BASE` | Generate with `mix phx.gen.secret` | Yes |
 | `PHX_HOST` | Domain name (e.g., `myapp.com`) | Yes |
 | `AUDIT_PASSWORD` | Password for Audit API | Yes |
+| `DATABASE_SSL` | Set to `true` for a managed Postgres that requires TLS | No |
+| `POOL_SIZE` | Connection pool size (default `10`) | No |
+| `ECTO_IPV6` | Set to `true` to connect over IPv6 | No |
+| `DATABASE_PATH` | Old SQLite file to import blog data from, once. See below. | No |
+
+### Migrating from SQLite
+
+This app used to run on SQLite. The first boot after switching to Postgres
+imports the blogs, their revisions and the assets from the old file: leave
+`DATABASE_PATH` pointing at it and the `20260731110200` migration copies the rows
+over, logging a count per table. It runs once, does nothing if the file is
+absent, and can be bypassed with `SKIP_SQLITE_IMPORT=true`.
+
+Image bytes live in S3, so nothing outside the database needs moving. Keep the
+old file until the import has been verified — it is the only copy. Afterwards,
+unset `DATABASE_PATH` and the migration plus `Echo.Release.SqliteImport` can be
+deleted along with the `exqlite` dependency.
 
 ### Running a Release
 

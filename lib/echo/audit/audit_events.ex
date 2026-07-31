@@ -17,7 +17,7 @@ defmodule Echo.AuditEvents do
   def list_events(session_id) do
     AuditEvent
     |> where([e], e.session_id == ^session_id)
-    |> order_by([e], asc: e.created_at)
+    |> order_by([e], asc: e.created_at, asc: e.id)
     |> Repo.all()
   end
 end

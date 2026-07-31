@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Echo is a **Phoenix 1.8** web application built on **Elixir ~> 1.19** with a **SQLite** database (via `ecto_sqlite3`). It is a multi-feature platform providing:
+Echo is a **Phoenix 1.8** web application built on **Elixir ~> 1.19** with a **PostgreSQL** database (via `postgrex`). It is a multi-feature platform providing:
 
 - **Real-time Chat** — WebSocket channels (`Phoenix.PubSub`) with AI-powered bot mentions
 - **Blog CMS** — CRUD API with revisions, slugs, and content versioning
@@ -25,7 +25,7 @@ The app boots the following supervised children:
 | Child | Purpose |
 |---|---|
 | `EchoWeb.Telemetry` | Telemetry metrics |
-| `Echo.Repo` | Ecto/SQLite repo |
+| `Echo.Repo` | Ecto/Postgres repo |
 | `Ecto.Migrator` | Auto-runs migrations on boot |
 | `DNSCluster` | Clustering (production) |
 | `Phoenix.PubSub` | PubSub backbone for channels |
@@ -90,7 +90,9 @@ The project follows the standard Phoenix context pattern — business logic live
 
 ### Database
 
-SQLite via `ecto_sqlite3`. Migrations live in `priv/repo/migrations/`. The database auto-migrates on application boot (via `Ecto.Migrator` in the supervision tree).
+PostgreSQL via `postgrex`. Migrations live in `priv/repo/migrations/`. The database auto-migrates on application boot (via `Ecto.Migrator` in the supervision tree).
+
+The app previously ran on SQLite. `Echo.Release.SqliteImport`, called from the `20260731110200` migration, does a one-off copy of the blogs, revisions and assets out of the old file named by `DATABASE_PATH`. It is a no-op without that file and is removable once the cutover is confirmed.
 
 ---
 
@@ -130,7 +132,9 @@ mix assets.deploy
 | `JWT_SECRET` | Yes | Secret for signing JWT tokens |
 | `AUDIT_PASSWORD` | For audit API | Bearer token for audit endpoints |
 | `S3_SECRET_ACCESS_KEY` | For assets | S3 secret key for asset storage |
-| `DATABASE_PATH` | Prod only | Path to SQLite DB file |
+| `DATABASE_URL` | Prod only | Postgres connection URL |
+| `DATABASE_SSL` | Optional | Set to `true` when the Postgres provider requires TLS |
+| `DATABASE_PATH` | Optional | Old SQLite file to import blog data from, once |
 | `SECRET_KEY_BASE` | Prod only | Phoenix secret key base |
 | `PHX_HOST` | Prod only | Production hostname |
 | `AXIOM_TOKEN` | Prod only | Axiom logging token |

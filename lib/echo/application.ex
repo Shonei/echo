@@ -52,7 +52,7 @@ defmodule Echo.Application do
   end
 
   defp skip_migrations?() do
-    # By default, sqlite migrations are run when using a release
+    # Releases run migrations through Echo.Migrator instead of at boot
     System.get_env("RELEASE_NAME") != nil
   end
 
@@ -70,7 +70,6 @@ defmodule Echo.Application do
       []
     end
   end
-
 
   defp setup_axiom_logging do
     if Echo.AxiomConfig.enabled?() do

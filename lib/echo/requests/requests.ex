@@ -157,13 +157,14 @@ defmodule Echo.Requests do
         from r in query, limit: ^per_page
 
       {:url_path_like, path_pattern}, query when is_binary(path_pattern) ->
-        from r in query, where: like(r.url_path, ^path_pattern)
+        # ilike to keep SQLite's case-insensitive LIKE behaviour on Postgres
+        from r in query, where: ilike(r.url_path, ^path_pattern)
 
       {:method, method}, query when is_binary(method) ->
         from r in query, where: r.method == ^method
 
       {:query_contains, param_key}, query when is_binary(param_key) ->
-        from r in query, where: like(r.url_query, ^"%#{param_key}%")
+        from r in query, where: ilike(r.url_query, ^"%#{param_key}%")
 
       {:content_type, content_type}, query when is_binary(content_type) ->
         from r in query, where: r.content_type == ^content_type

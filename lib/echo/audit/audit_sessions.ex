@@ -35,7 +35,9 @@ defmodule Echo.AuditSessions do
 
     query =
       from(s in AuditSession,
-        order_by: [desc: s.created_at],
+        # id breaks ties: created_at is second-precision and Postgres gives no
+        # stable order within a second, which would make pages overlap.
+        order_by: [desc: s.created_at, desc: s.id],
         limit: ^page_size,
         offset: ^offset
       )

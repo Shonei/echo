@@ -16,6 +16,10 @@ defmodule Echo.Repo.Migrations.CreateAiMessages do
     end
 
     create index(:ai_messages, [:session_id, :inserted_at])
-    create index(:ai_messages, [:reference_type, :reference_id, :session_id, :inserted_at])
+    # Explicit name: the generated one is 68 characters and Postgres silently
+    # truncates identifiers at 63, after which drop index cannot find it.
+    create index(:ai_messages, [:reference_type, :reference_id, :session_id, :inserted_at],
+             name: :ai_messages_reference_session_inserted_at_index
+           )
   end
 end

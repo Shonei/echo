@@ -25,7 +25,8 @@ if System.get_env("PHX_SERVER") do
   config :echo, EchoWeb.Endpoint, server: true
 end
 
-config :logger, :default_handler, formatter: LoggerJSON.Formatters.Basic.new(metadata: {:all_except, [:file]})
+config :logger, :default_handler,
+  formatter: LoggerJSON.Formatters.Basic.new(metadata: {:all_except, [:file]})
 
 if audit_password = System.get_env("AUDIT_PASSWORD") do
   config :echo, :audit_password, audit_password
@@ -53,16 +54,21 @@ end
 if config_env() == :prod do
   config :echo, axiom_token: System.get_env("AXIOM_TOKEN")
 
-  database_path =
-    System.get_env("DATABASE_PATH") ||
+  database_url =
+    System.get_env("DATABASE_URL") ||
       raise """
-      environment variable DATABASE_PATH is missing.
-      For example: /etc/echo/echo.db
+      environment variable DATABASE_URL is missing.
+      For example: postgres://user:pass@host:5432/echo
       """
 
+  # DATABASE_PATH is no longer the database. It is optional now and only names
+  # the old SQLite file to import blog data from on the first boot after the
+  # move to Postgres. See Echo.Release.SqliteImport.
   config :echo, Echo.Repo,
-    database: database_path,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
+    url: database_url,
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
+    ssl: System.get_env("DATABASE_SSL") in ~w(true 1),
+    socket_options: if(System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: [])
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
