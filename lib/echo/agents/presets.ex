@@ -177,13 +177,14 @@ defmodule Echo.Agents.Presets do
   @doc """
   Visual direction assistant. Runs on an image-capable model and may return
   inline image data alongside text.
+
+  Declares no tools at all — image models cannot call them.
   """
   def photographer do
     %{
       "system_prompt" => @photographer_prompt,
       "temperature" => 0.7,
       "response_modalities" => ["TEXT", "IMAGE"],
-      "tools" => [],
       "model" => "gemini-3-pro-image-preview"
     }
   end

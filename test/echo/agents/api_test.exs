@@ -49,6 +49,23 @@ defmodule Echo.Agents.APITest do
       refute Map.has_key?(payload, :tools)
       refute Map.has_key?(payload, :toolConfig)
     end
+
+    test "omits an empty tools list rather than sending []" do
+      payload = API.build_payload(@contents, tools: [])
+
+      refute Map.has_key?(payload, :tools)
+    end
+
+    test "the photographer preset sends no tools key at all" do
+      opts =
+        Presets.photographer() |> Enum.map(fn {key, value} -> {String.to_atom(key), value} end)
+
+      payload = API.build_payload(@contents, opts)
+
+      refute Map.has_key?(payload, :tools)
+      refute Map.has_key?(payload, :toolConfig)
+      assert payload.generationConfig.responseModalities == ["TEXT", "IMAGE"]
+    end
   end
 
   describe "build_payload/2 generation config" do

@@ -193,6 +193,10 @@ defmodule Echo.Agents.API do
 
   defp maybe_add_tools(payload, nil), do: payload
 
+  # An empty list is not the same as no tools: sending "tools": [] to a model
+  # that cannot use tools at all (the image models) makes Gemini fail.
+  defp maybe_add_tools(payload, []), do: payload
+
   defp maybe_add_tools(payload, tools) when is_list(tools) do
     payload = Map.put(payload, :tools, tools)
 
