@@ -45,7 +45,7 @@ The app boots the following supervised children:
 | Context | Modules | Responsibility |
 |---|---|---|
 | `Echo.Agent` | `Echo.Agent`, `Echo.Agent.Message` | AI message persistence (Ecto schema + CRUD) |
-| `Echo.Agents` | `Echo.Agents.API`, `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager` | Gemini API client, per-conversation GenServers, process lifecycle |
+| `Echo.Agents` | `Echo.Agents.API`, `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Presets` | Gemini API client, per-conversation GenServers, process lifecycle, pre-configured editor/photographer prompts and tools |
 | `Echo.Chat` | `Echo.Chat`, `Echo.Chat.Message` | Chat message CRUD |
 | `Echo.ChatRooms` | `Echo.ChatRooms`, `Echo.ChatRooms.ChatRoom` | Chat room management |
 | `Echo.Content` | `Echo.Content`, `Echo.Content.Blog`, `Echo.Content.Revision` | Blog + revision CRUD |

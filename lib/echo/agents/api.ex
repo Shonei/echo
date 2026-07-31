@@ -189,16 +189,7 @@ defmodule Echo.Agents.API do
   defp maybe_add_tools(payload, nil), do: payload
 
   defp maybe_add_tools(payload, tools) when is_list(tools) do
-    has_functions? = Enum.any?(tools, &Map.has_key?(&1, "functionDeclarations"))
-    has_builtin? = Enum.any?(tools, & (Map.has_key?(&1, "google_search") or Map.has_key?(&1, "url_context")))
-
-    payload = Map.put(payload, :tools, tools)
-
-    if has_functions? and has_builtin? do
-      Map.put(payload, :toolConfig, %{includeServerSideToolInvocations: true})
-    else
-      payload
-    end
+    Map.put(payload, :tools, tools)
   end
 
   defp maybe_add_tools(payload, _), do: payload
@@ -218,7 +209,7 @@ defmodule Echo.Agents.API do
 
     config =
       if opts[:thinking_enabled] do
-        thinking_config = %{} |> maybe_put(:thinkingBudgetTokens, opts[:thinking_budget])
+        thinking_config = %{} |> maybe_put(:thinkingBudget, opts[:thinking_budget])
         Map.put(config, :thinkingConfig, thinking_config)
       else
         config
