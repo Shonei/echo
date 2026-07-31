@@ -107,13 +107,7 @@ defmodule Echo.Agents.API do
         {"x-goog-api-key", state.api_key}
       ]
 
-      payload = %{
-        contents: format_contents(contents)
-      }
-
-      payload = append_options(payload, opts)
-
-      body = Jason.encode!(payload)
+      body = contents |> build_payload(opts) |> Jason.encode!()
 
       if state.log_debug_body do
         Logger.info("Gemini API Request Body", %{body: body, url: url, headers: headers})
@@ -141,6 +135,17 @@ defmodule Echo.Agents.API do
           {:reply, {:error, {:request_failed, exception}}, state}
       end
     end
+  end
+
+  # --- Payload construction ---
+
+  @doc """
+  Builds the `generateContent` request body. Public so the payload can be
+  asserted on without going near the network.
+  """
+  def build_payload(contents, opts) do
+    %{contents: format_contents(contents)}
+    |> append_options(opts)
   end
 
   # --- Internal Helpers ---
@@ -189,10 +194,33 @@ defmodule Echo.Agents.API do
   defp maybe_add_tools(payload, nil), do: payload
 
   defp maybe_add_tools(payload, tools) when is_list(tools) do
-    Map.put(payload, :tools, tools)
+    payload = Map.put(payload, :tools, tools)
+
+    # Gemini rejects built-in tools declared alongside function calling unless
+    # this is set: "Please enable tool_config.include_server_side_tool_invocations
+    # to use Built-in tools with Function calling."
+    if mixes_builtins_and_functions?(tools) do
+      Map.put(payload, :toolConfig, %{includeServerSideToolInvocations: true})
+    else
+      payload
+    end
   end
 
   defp maybe_add_tools(payload, _), do: payload
+
+  @builtin_tools ~w(google_search url_context google_search_retrieval code_execution
+                    file_search google_maps computer_use)
+
+  defp mixes_builtins_and_functions?(tools) do
+    has_functions? = Enum.any?(tools, &Map.has_key?(&1, "functionDeclarations"))
+
+    has_builtin? =
+      Enum.any?(tools, fn tool ->
+        is_map(tool) and Enum.any?(@builtin_tools, &Map.has_key?(tool, &1))
+      end)
+
+    has_functions? and has_builtin?
+  end
 
   defp maybe_add_system_prompt(payload, nil), do: payload
 

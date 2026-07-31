@@ -209,10 +209,15 @@ A conversation can carry three kinds of tool, all passed through the same `tools
 | Echo tools | `Echo.Agents.Tools.tool_config/1` | `Echo.Agents.ConversationServer`, before it replies | `http_request` |
 | Client tools | The API caller's own `functionDeclarations` | The caller, after the reply comes back | The blog editor's `edit_text`, `insert_lines` |
 
-All three kinds can be combined in one conversation — `functionDeclarations` alongside
-`google_search` works — but only on text models. Image-generating models
-(`gemini-3-pro-image-preview`) cannot call tools at all, which is why the `photographer`
-preset declares none.
+All three kinds can be combined in one conversation, but only on text models.
+Image-generating models (`gemini-3-pro-image-preview`) cannot call tools at all, which is
+why the `photographer` preset declares none.
+
+Mixing built-in tools with function declarations requires
+`toolConfig.includeServerSideToolInvocations`, or Gemini rejects the request with a 400:
+*"Please enable tool_config.include_server_side_tool_invocations to use Built-in tools with
+Function calling."* `Echo.Agents.API.build_payload/2` sets it automatically whenever both
+kinds are present, and `test/echo/agents/api_test.exs` pins that — do not remove it.
 
 `Echo.Agents.Tools` is the registry of the middle kind. When a reply contains a
 `functionCall` for a registered tool, `run_turn/5` in `ConversationServer` runs it,
