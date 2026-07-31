@@ -7,6 +7,9 @@ defmodule Echo.Agents.ConversationServer do
 
   alias Echo.Agents.Conversation
 
+  # How many times Echo will run a server-side tool and call back for one user turn.
+  @max_tool_iterations 5
+
   # --- Client API ---
 
   def start_link(opts) do
@@ -59,6 +62,9 @@ defmodule Echo.Agents.ConversationServer do
       messages: []
     }
 
+    # Only tools this conversation actually declared may be run server-side.
+    convo = %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}
+
     if convo.system_prompt do
       async_store_parts(id, "system", [%{"text" => convo.system_prompt}], convo.model)
     end
@@ -96,27 +102,53 @@ defmodule Echo.Agents.ConversationServer do
       model: convo.model
     ]
 
-    # Call Gemini
-    case Echo.Agents.API.generate_content(new_messages, api_opts) do
-      {:ok, response} ->
-        # Extract AI parts directly
-        case extract_parts(response) do
-          {:ok, ai_parts, metadata} ->
-            # Append AI message
-            ai_msg = %{"role" => "model", "parts" => ai_parts}
-            updated_convo = %{convo | messages: new_messages ++ [ai_msg]}
-
-            # Fire and forget DB storage for the AI response
-            async_store_parts(convo.id, "model", ai_parts, convo.model, metadata)
-
-            {:reply, {:ok, ai_parts, metadata}, updated_convo}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, convo}
-        end
+    case run_turn(new_messages, api_opts, convo, [], 0) do
+      {:ok, messages, reply_parts, metadata} ->
+        {:reply, {:ok, reply_parts, metadata}, %{convo | messages: messages}}
 
       {:error, reason} ->
         {:reply, {:error, reason}, convo}
+    end
+  end
+
+  # Calls Gemini, and if it asked for a tool Echo owns, runs the tool and calls
+  # again with the result. Client-side tools (the blog editor's `edit_text`, for
+  # instance) are not in the registry, so they simply come back to the caller.
+  defp run_turn(messages, api_opts, convo, acc_parts, depth) do
+    case Echo.Agents.API.generate_content(messages, api_opts) do
+      {:ok, response} ->
+        case extract_parts(response) do
+          {:ok, ai_parts, metadata} ->
+            messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
+            async_store_parts(convo.id, "model", ai_parts, convo.model, metadata)
+
+            acc_parts = acc_parts ++ ai_parts
+
+            case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
+              [] ->
+                {:ok, messages, acc_parts, metadata}
+
+              calls when depth >= @max_tool_iterations ->
+                Logger.warning(
+                  "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
+                )
+
+                {:ok, messages, acc_parts, metadata}
+
+              calls ->
+                response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+                async_store_parts(convo.id, "user", response_parts, convo.model)
+
+                messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
+                run_turn(messages, api_opts, convo, acc_parts, depth + 1)
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -131,11 +163,15 @@ defmodule Echo.Agents.ConversationServer do
          "candidates" => [%{"content" => %{"parts" => parts}} = candidate | _]
        }) do
     grounding = Map.get(candidate, "groundingMetadata")
-    url_context = Map.get(candidate, "urlContextMetadata") || Map.get(candidate, "url_context_metadata")
+
+    url_context =
+      Map.get(candidate, "urlContextMetadata") || Map.get(candidate, "url_context_metadata")
 
     metadata = %{}
     metadata = if grounding, do: Map.put(metadata, "groundingMetadata", grounding), else: metadata
-    metadata = if url_context, do: Map.put(metadata, "urlContextMetadata", url_context), else: metadata
+
+    metadata =
+      if url_context, do: Map.put(metadata, "urlContextMetadata", url_context), else: metadata
 
     {:ok, parts, metadata}
   end

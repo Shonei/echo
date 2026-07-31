@@ -182,6 +182,12 @@ Empty response body on successful deletion.
 
 Gemini allows the AI to call defined tools. You can provide these tool definitions when creating a conversation (`POST /conversation`).
 
+Three kinds of tool can be mixed in the same `tools` list:
+
+- **Gemini built-ins** — `{"google_search": {}}` and `{"url_context": {}}`. Gemini runs these itself and reports what it did as `groundingMetadata` / `urlContextMetadata` in the response's `metadata`.
+- **Echo tools** — declarations from `Echo.Agents.Tools`, currently `http_request`. Echo executes the call itself, feeds the result back to the model, and repeats up to 5 times per message before replying, so a single request can return several `functionCall` parts followed by the final text. Execution is limited to the tools the conversation declared. Selectable from the agent-chat UI; see `agents.md` for the SSRF guardrails on `http_request`.
+- **Your own tools** — anything else you declare. Echo passes the `functionCall` back to you untouched and expects the result via `PUT /conversation/:id/content`, as described below.
+
 **Example Tool Definition in `POST /conversation`:**
 ```json
 {

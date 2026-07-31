@@ -6,7 +6,7 @@ Echo is a **Phoenix 1.8** web application built on **Elixir ~> 1.19** with a **P
 
 - **Real-time Chat** — WebSocket channels (`Phoenix.PubSub`) with AI-powered bot mentions
 - **Blog CMS** — CRUD API with revisions, slugs, and content versioning
-- **AI Conversation Engine** — Stateful GenServer-backed conversations with the Gemini API, including tool-calling support (server-side and planned client-side)
+- **AI Conversation Engine** — Stateful GenServer-backed conversations with the Gemini API, with server-executed tools (`Echo.Agents.Tools`) and client-executed tools (declared by the caller, returned for it to run)
 - **Asset Storage** — S3-compatible file uploads with rate limiting and thumbnail processing (via `vix`/libvips)
 - **Audit Logging** — Session-based event tracking with bearer-token auth
 - **Request Echoing** — HTTP request capture and replay for debugging
@@ -45,7 +45,7 @@ The app boots the following supervised children:
 | Context | Modules | Responsibility |
 |---|---|---|
 | `Echo.Agent` | `Echo.Agent`, `Echo.Agent.Message` | AI message persistence (Ecto schema + CRUD) |
-| `Echo.Agents` | `Echo.Agents.API`, `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Presets` | Gemini API client, per-conversation GenServers, process lifecycle, pre-configured editor/photographer prompts and tools |
+| `Echo.Agents` | `Echo.Agents.API`, `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Presets`, `Echo.Agents.Tools`, `Echo.Agents.Tools.HttpRequest` | Gemini API client, per-conversation GenServers, process lifecycle, pre-configured editor/photographer prompts and tools, server-executed tools |
 | `Echo.Chat` | `Echo.Chat`, `Echo.Chat.Message` | Chat message CRUD |
 | `Echo.ChatRooms` | `Echo.ChatRooms`, `Echo.ChatRooms.ChatRoom` | Chat room management |
 | `Echo.Content` | `Echo.Content`, `Echo.Content.Blog`, `Echo.Content.Revision` | Blog + revision CRUD |
@@ -196,6 +196,41 @@ The project has additional documentation that may be useful for context:
 - `docs/blog_api.md` — Blog API documentation
 - `designs/agents_builder.md` — Design doc for the upcoming Agents Builder feature (custom tools + agents)
 - `lib/echo_web/agents/geminoi_api_ref.md` — Gemini API reference (local copy)
+
+---
+
+## Tools
+
+A conversation can carry three kinds of tool, all passed through the same `tools` option:
+
+| Kind | Declared by | Executed by | Examples |
+|---|---|---|---|
+| Gemini built-ins | `%{"google_search" => %{}}`, `%{"url_context" => %{}}` | Gemini, server-side | Web search, URL fetching |
+| Echo tools | `Echo.Agents.Tools.tool_config/1` | `Echo.Agents.ConversationServer`, before it replies | `http_request` |
+| Client tools | The API caller's own `functionDeclarations` | The caller, after the reply comes back | The blog editor's `edit_text`, `insert_lines` |
+
+All three kinds can be combined in one conversation — `functionDeclarations` alongside
+`google_search` works — but only on text models. Image-generating models
+(`gemini-3-pro-image-preview`) cannot call tools at all, which is why the `photographer`
+preset declares none.
+
+`Echo.Agents.Tools` is the registry of the middle kind. When a reply contains a
+`functionCall` for a registered tool, `run_turn/5` in `ConversationServer` runs it,
+appends the `functionResponse` as a user turn, and calls Gemini again — up to
+`@max_tool_iterations` (5) times per user message. The caller sees the tool calls
+in the returned parts and the final answer, and every step is persisted to
+`ai_messages`.
+
+Execution is gated on `Echo.Agents.Tools.enabled/1`, which reads the tools the
+conversation actually declared. A model can emit a call for a tool it was never
+offered, and in a conversation that only declared client-side tools Echo must not
+run it.
+
+`Echo.Agents.Tools.HttpRequest` (`http_request`) lets the model make an arbitrary
+HTTP request. Because the model picks the URL, `validate_url/1` refuses non-HTTP
+schemes and any host resolving to a loopback, private, link-local, CGNAT,
+multicast, or reserved address — the cloud metadata endpoint included — and
+responses are capped at 512 KB. It is off unless ticked on in the agent-chat form.
 
 ---
 
