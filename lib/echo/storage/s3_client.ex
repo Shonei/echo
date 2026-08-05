@@ -21,8 +21,6 @@ defmodule Echo.Storage.S3Client do
         # secret_access_key loaded from S3_SECRET_ACCESS_KEY env var
   """
 
-  require Logger
-
   defstruct [:endpoint, :region, :bucket, :access_key_id, :secret_access_key, :finch_name]
 
   # Client API
@@ -45,11 +43,16 @@ defmodule Echo.Storage.S3Client do
 
         metadata =
           case result do
-            {:ok, body, _content_type} ->
-              %{path: path, file_size_bytes: byte_size(body)}
+            {:ok, body, content_type} ->
+              %{
+                path: path,
+                file_size_bytes: byte_size(body),
+                content_type: content_type,
+                result: :ok
+              }
 
-            _error ->
-              %{path: path}
+            {:error, reason} ->
+              %{path: path, result: :error, error: inspect(reason)}
           end
 
         {result, metadata}
@@ -74,7 +77,28 @@ defmodule Echo.Storage.S3Client do
       %{path: path, content_type: content_type, file_size_bytes: file_size},
       fn ->
         result = do_upload_object(get_config(), path, body, content_type)
-        {result, %{path: path, file_size_bytes: file_size}}
+
+        metadata =
+          case result do
+            :ok ->
+              %{
+                path: path,
+                content_type: content_type,
+                file_size_bytes: file_size,
+                result: :ok
+              }
+
+            {:error, reason} ->
+              %{
+                path: path,
+                content_type: content_type,
+                file_size_bytes: file_size,
+                result: :error,
+                error: inspect(reason)
+              }
+          end
+
+        {result, metadata}
       end
     )
   end
@@ -133,6 +157,7 @@ defmodule Echo.Storage.S3Client do
     headers = sign_request(state, "GET", path, "", [])
 
     req = Finch.build(:get, url, headers)
+
     case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
       {:ok, %Finch.Response{status: 200, body: body, headers: resp_headers}} ->
         content_type = get_header(resp_headers, "content-type", "application/octet-stream")
@@ -162,6 +187,7 @@ defmodule Echo.Storage.S3Client do
     headers = sign_request(state, "PUT", path, body, [{"content-type", content_type}])
 
     req = Finch.build(:put, url, headers, body)
+
     case Finch.request(req, state.finch_name, receive_timeout: 60_000) do
       {:ok, %Finch.Response{status: status}} when status in 200..299 ->
         :ok
@@ -180,6 +206,7 @@ defmodule Echo.Storage.S3Client do
     headers = sign_request(state, "GET", "", "", [], query)
 
     req = Finch.build(:get, url, headers)
+
     case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
       {:ok, %Finch.Response{status: 200, body: body}} ->
         {:ok, parse_list_objects_response(body)}
@@ -197,6 +224,7 @@ defmodule Echo.Storage.S3Client do
     headers = sign_request(state, "DELETE", path, "", [])
 
     req = Finch.build(:delete, url, headers)
+
     case Finch.request(req, state.finch_name, receive_timeout: 30_000) do
       {:ok, %Finch.Response{status: status}} when status in [200, 204] ->
         :ok

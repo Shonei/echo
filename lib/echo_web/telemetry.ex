@@ -35,11 +35,25 @@ defmodule EchoWeb.Telemetry do
       :telemetry.attach_many(
         "echo-storage-instrumentation",
         [
+          [:echo, :storage, :asset, :upload, :stop],
           [:echo, :storage, :image, :process, :stop],
           [:echo, :storage, :s3, :download, :stop],
           [:echo, :storage, :s3, :upload, :stop]
         ],
         &log_storage_event/4,
+        %{}
+      )
+
+    :ok =
+      :telemetry.attach_many(
+        "echo-storage-exceptions",
+        [
+          [:echo, :storage, :asset, :upload, :exception],
+          [:echo, :storage, :image, :process, :exception],
+          [:echo, :storage, :s3, :download, :exception],
+          [:echo, :storage, :s3, :upload, :exception]
+        ],
+        &log_storage_exception/4,
         %{}
       )
 
@@ -49,28 +63,68 @@ defmodule EchoWeb.Telemetry do
   def log_storage_event(event_name, measurements, metadata, _config) do
     action = event_name |> Enum.drop(-1) |> Enum.join(".")
     duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
+    result = metadata[:result] || :ok
+    level = if result == :error, do: :error, else: :info
 
-    Logger.info("Storage operation completed",
+    Logger.log(
+      level,
+      storage_message(action, result),
+      [
+        action: action,
+        duration_ms: duration_ms,
+        result: result,
+        path: metadata[:path],
+        variant: metadata[:variant],
+        width: metadata[:width],
+        target_ext: metadata[:target_ext],
+        content_type: metadata[:content_type],
+        file_size_bytes: metadata[:file_size_bytes],
+        variant_count: metadata[:variant_count],
+        image?: metadata[:image?],
+        error: metadata[:error]
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    )
+  end
+
+  def log_storage_exception(event_name, measurements, metadata, _config) do
+    action = event_name |> Enum.drop(-1) |> Enum.join(".")
+    duration_ms = System.convert_time_unit(measurements.duration, :native, :millisecond)
+    kind = metadata[:kind]
+    reason = metadata[:reason]
+
+    Logger.error("Storage operation crashed",
       action: action,
       duration_ms: duration_ms,
       path: metadata[:path],
-      width: metadata[:width],
-      target_ext: metadata[:target_ext],
-      file_size_bytes: metadata[:file_size_bytes]
+      kind: kind,
+      error: Exception.format(kind, reason, metadata[:stacktrace] || [])
     )
   end
 
   def log_http_request(_event, measurements, metadata, _config) do
-    path = Map.get(metadata.conn, :request_path)
-    method = Map.get(metadata.conn, :method)
-    status = Map.get(metadata.conn, :status)
+    conn = metadata.conn
 
-    Logger.info("HTTP Request",
-      duration_ms:
-        System.convert_time_unit(Map.get(measurements, :duration), :native, :millisecond),
-      path: path,
-      method: method,
-      status: status
+    duration_ms =
+      System.convert_time_unit(Map.get(measurements, :duration), :native, :millisecond)
+
+    status = conn.status
+    level = if is_integer(status) and status >= 500, do: :error, else: :info
+
+    Logger.log(
+      level,
+      "HTTP Request",
+      [
+        duration_ms: duration_ms,
+        method: conn.method,
+        path: conn.request_path,
+        query_string: blank_to_nil(conn.query_string),
+        status: status,
+        remote_ip: format_ip(conn),
+        req_content_length: req_content_length(conn),
+        user_agent: req_header(conn, "user-agent")
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     )
   end
 
@@ -142,6 +196,10 @@ defmodule EchoWeb.Telemetry do
       ),
 
       # Storage Metrics
+      summary("echo.storage.asset.upload.stop.duration",
+        unit: {:native, :millisecond},
+        description: "End-to-end time spent uploading an asset (including image variants)"
+      ),
       summary("echo.storage.s3.upload.stop.duration",
         unit: {:native, :millisecond},
         description: "Time spent uploading objects to S3"
@@ -162,6 +220,46 @@ defmodule EchoWeb.Telemetry do
       summary("vm.total_run_queue_lengths.io")
     ]
   end
+
+  defp storage_message("echo.storage.asset.upload", :ok), do: "Asset upload completed"
+  defp storage_message("echo.storage.asset.upload", :error), do: "Asset upload failed"
+  defp storage_message("echo.storage.image.process", :ok), do: "Image processing completed"
+  defp storage_message("echo.storage.image.process", :error), do: "Image processing failed"
+  defp storage_message("echo.storage.s3.download", :ok), do: "S3 download completed"
+  defp storage_message("echo.storage.s3.download", :error), do: "S3 download failed"
+  defp storage_message("echo.storage.s3.upload", :ok), do: "S3 upload completed"
+  defp storage_message("echo.storage.s3.upload", :error), do: "S3 upload failed"
+  defp storage_message(action, :ok), do: "Storage operation completed (#{action})"
+  defp storage_message(action, :error), do: "Storage operation failed (#{action})"
+
+  defp format_ip(conn) do
+    case Plug.Conn.get_req_header(conn, "x-forwarded-for") do
+      [forwarded | _] ->
+        forwarded |> String.split(",") |> List.first() |> String.trim()
+
+      [] ->
+        conn.remote_ip |> :inet.ntoa() |> to_string()
+    end
+  end
+
+  defp req_content_length(conn) do
+    case req_header(conn, "content-length") do
+      nil -> nil
+      value -> String.to_integer(value)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp req_header(conn, name) do
+    case Plug.Conn.get_req_header(conn, name) do
+      [value | _] -> value
+      [] -> nil
+    end
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
 
   defp periodic_measurements do
     [

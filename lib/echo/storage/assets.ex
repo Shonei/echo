@@ -11,7 +11,6 @@ defmodule Echo.Storage.Assets do
   alias Echo.Storage.Asset
   alias Echo.Storage.S3Client
   alias Vix.Vips.{Image, Operation}
-  require Logger
 
   @doc """
   Gets an asset by its storage path.
@@ -113,13 +112,63 @@ defmodule Echo.Storage.Assets do
   def upload_asset(path, body, content_type, opts \\ []) do
     reference_type = Keyword.get(opts, :reference_type)
     reference_id = Keyword.get(opts, :reference_id)
+    file_size_bytes = byte_size(body)
 
-    if String.starts_with?(content_type, "image/") do
-      handle_image_upload(path, body, content_type, reference_type, reference_id)
-    else
-      handle_regular_upload(path, body, content_type, reference_type, reference_id)
-    end
+    :telemetry.span(
+      [:echo, :storage, :asset, :upload],
+      %{
+        path: path,
+        content_type: content_type,
+        file_size_bytes: file_size_bytes,
+        image?: String.starts_with?(content_type, "image/")
+      },
+      fn ->
+        result =
+          if String.starts_with?(content_type, "image/") do
+            handle_image_upload(path, body, content_type, reference_type, reference_id)
+          else
+            handle_regular_upload(path, body, content_type, reference_type, reference_id)
+          end
+
+        {result, upload_span_metadata(path, content_type, file_size_bytes, result)}
+      end
+    )
   end
+
+  defp upload_span_metadata(path, content_type, file_size_bytes, {:ok, assets}) do
+    %{
+      path: path,
+      content_type: content_type,
+      file_size_bytes: file_size_bytes,
+      image?: String.starts_with?(content_type, "image/"),
+      variant_count: length(assets),
+      result: :ok
+    }
+  end
+
+  defp upload_span_metadata(path, content_type, file_size_bytes, {:error, reason}) do
+    %{
+      path: path,
+      content_type: content_type,
+      file_size_bytes: file_size_bytes,
+      image?: String.starts_with?(content_type, "image/"),
+      result: :error,
+      error: format_upload_error(reason)
+    }
+  end
+
+  defp format_upload_error(:already_exists), do: "already_exists"
+
+  defp format_upload_error({:image_processing_failed, reason}),
+    do: "image_processing_failed: #{inspect(reason)}"
+
+  defp format_upload_error({:s3_upload_failed, reason}),
+    do: "s3_upload_failed: #{inspect(reason)}"
+
+  defp format_upload_error(%Ecto.Changeset{} = changeset),
+    do: "changeset: #{inspect(changeset.errors)}"
+
+  defp format_upload_error(reason), do: inspect(reason)
 
   defp handle_regular_upload(path, body, content_type, reference_type, reference_id) do
     hash = compute_hash(path, content_type, reference_type, reference_id)
@@ -161,7 +210,7 @@ defmodule Echo.Storage.Assets do
           if type == :original do
             body
           else
-            process_image(body, width, target_ext)
+            process_image(body, width, target_ext, current_path, type)
           end
 
         current_content_type =
@@ -173,7 +222,8 @@ defmodule Echo.Storage.Assets do
           path: current_path,
           body: processed_body,
           content_type: current_content_type,
-          hash: hash
+          hash: hash,
+          variant: type
         }
       end)
 
@@ -295,10 +345,16 @@ defmodule Echo.Storage.Assets do
   # Private helpers
 
   # Resize image and return binary
-  defp process_image(body, width, target_ext) do
+  defp process_image(body, width, target_ext, path, variant) do
     :telemetry.span(
       [:echo, :storage, :image, :process],
-      %{width: width, target_ext: target_ext},
+      %{
+        path: path,
+        variant: variant,
+        width: width,
+        target_ext: target_ext,
+        file_size_bytes: byte_size(body)
+      },
       fn ->
         result =
           with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, width),
@@ -308,7 +364,31 @@ defmodule Echo.Storage.Assets do
             {:error, reason} -> {:error, reason}
           end
 
-        {result, %{width: width, target_ext: target_ext}}
+        metadata =
+          case result do
+            {:error, reason} ->
+              %{
+                path: path,
+                variant: variant,
+                width: width,
+                target_ext: target_ext,
+                file_size_bytes: byte_size(body),
+                result: :error,
+                error: inspect(reason)
+              }
+
+            buffer when is_binary(buffer) ->
+              %{
+                path: path,
+                variant: variant,
+                width: width,
+                target_ext: target_ext,
+                file_size_bytes: byte_size(buffer),
+                result: :ok
+              }
+          end
+
+        {result, metadata}
       end
     )
   end

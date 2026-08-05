@@ -74,10 +74,14 @@ defmodule EchoWeb.AssetController do
     path = Enum.join(path_parts, "/")
     content_type = content_type_from_extension(path)
 
-    Logger.info("Uploading asset: #{path} with content type: #{content_type}")
-
     # Read raw body, allowing up to 50MB
     {:ok, body, conn} = Plug.Conn.read_body(conn, length: 50_000_000)
+
+    Logger.info("Uploading asset",
+      path: path,
+      content_type: content_type,
+      file_size_bytes: byte_size(body)
+    )
 
     # Parse optional reference params
     reference_type = Map.get(params, "reference_type")

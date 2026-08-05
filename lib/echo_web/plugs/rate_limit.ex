@@ -14,6 +14,7 @@ defmodule EchoWeb.Plugs.RateLimit do
   """
 
   import Plug.Conn
+  require Logger
 
   @table_name :rate_limit_requests
 
@@ -45,6 +46,13 @@ defmodule EchoWeb.Plugs.RateLimit do
       [{^key, last_request_time}] ->
         if now - last_request_time < interval_ms do
           retry_after_seconds = div(interval_ms - (now - last_request_time), 1000) + 1
+
+          Logger.warning("Rate limit exceeded",
+            path: conn.request_path,
+            method: conn.method,
+            ip: key,
+            retry_after_seconds: retry_after_seconds
+          )
 
           conn
           |> put_resp_content_type("application/json")

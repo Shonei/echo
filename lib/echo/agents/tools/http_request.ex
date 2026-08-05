@@ -113,6 +113,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
   defp request(method, url, headers, body) do
     headers = build_headers(headers)
     body = if method in ["GET", "HEAD"], do: nil, else: body
+    started_at = System.monotonic_time(:millisecond)
 
     req = Finch.build(method_atom(method), url, headers, body)
 
@@ -121,7 +122,17 @@ defmodule Echo.Agents.Tools.HttpRequest do
            pool_timeout: @pool_timeout
          ) do
       {:ok, %Finch.Response{status: status, headers: resp_headers, body: resp_body}} ->
+        duration_ms = System.monotonic_time(:millisecond) - started_at
         {body, truncated?} = truncate(resp_body)
+
+        Logger.info("http_request tool completed",
+          method: method,
+          url: url,
+          status: status,
+          duration_ms: duration_ms,
+          response_bytes: byte_size(resp_body),
+          truncated: truncated?
+        )
 
         %{
           "status" => status,
@@ -131,7 +142,15 @@ defmodule Echo.Agents.Tools.HttpRequest do
         }
 
       {:error, exception} ->
-        Logger.warning("http_request tool failed for #{url}: #{inspect(exception)}")
+        duration_ms = System.monotonic_time(:millisecond) - started_at
+
+        Logger.warning("http_request tool failed",
+          method: method,
+          url: url,
+          duration_ms: duration_ms,
+          error: inspect(exception)
+        )
+
         %{"error" => "Request failed: #{Exception.message(exception)}"}
     end
   end
