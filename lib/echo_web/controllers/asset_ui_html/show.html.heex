@@ -5,18 +5,29 @@
       <p class="mt-2 text-sm text-gray-700">Detailed information about the uploaded asset.</p>
     </div>
     <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
-      <a href={~p"/assets"} class="inline-flex rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Back to Assets</a>
+      <a
+        href={~p"/assets"}
+        class="inline-flex rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+      >
+        Back to Assets
+      </a>
     </div>
   </div>
 
   <div class="mt-8 bg-white shadow overflow-hidden sm:rounded-lg">
     <div class="px-4 py-5 sm:px-6 flex justify-between items-center bg-gray-50 border-b border-gray-200">
       <div>
-        <h3 class="text-lg leading-6 font-medium text-gray-900"><%= @asset.name %></h3>
-        <p class="mt-1 max-w-2xl text-sm text-gray-500"><%= @asset.content_type %></p>
+        <h3 class="text-lg leading-6 font-medium text-gray-900">
+          {@asset.filename || @asset.name}
+        </h3>
+        <p class="mt-1 max-w-2xl text-sm text-gray-500">{@asset.content_type}</p>
       </div>
       <div>
-        <a href={"/api/v1/assets#{@asset.url_suffix}"} target="_blank" class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+        <a
+          href={"/api/v1/assets#{@asset.url_suffix}"}
+          target="_blank"
+          class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500"
+        >
           Open Asset
         </a>
       </div>
@@ -25,38 +36,82 @@
       <dl>
         <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500">File Name</dt>
-          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><%= @asset.name %></dd>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+            {@asset.filename || "—"}
+          </dd>
         </div>
         <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500">Storage Key</dt>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{@asset.name}</dd>
+        </div>
+        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500">Content Type</dt>
-          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><%= @asset.content_type %></dd>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{@asset.content_type}</dd>
+        </div>
+        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500">Size</dt>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+            {format_bytes(@asset.byte_size)}
+          </dd>
+        </div>
+        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500">Dimensions</dt>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+            {format_dimensions(@asset.width, @asset.height)}
+          </dd>
+        </div>
+        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+          <dt class="text-sm font-medium text-gray-500">Variant</dt>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+            {@asset.variant || "—"}
+          </dd>
         </div>
         <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500">Upload Date</dt>
-          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><%= Calendar.strftime(@asset.inserted_at, "%Y-%m-%d %H:%M:%S") %></dd>
+          <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+            {Calendar.strftime(@asset.inserted_at, "%Y-%m-%d %H:%M:%S")}
+          </dd>
         </div>
         <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
           <dt class="text-sm font-medium text-gray-500">Asset URL / Path</dt>
           <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-            <a href={"/api/v1/assets#{@asset.url_suffix}"} target="_blank" class="text-indigo-600 hover:text-indigo-900">
-              /api/v1/assets<%= @asset.url_suffix %>
+            <a
+              href={"/api/v1/assets#{@asset.url_suffix}"}
+              target="_blank"
+              class="text-indigo-600 hover:text-indigo-900"
+            >
+              /api/v1/assets{@asset.url_suffix}
             </a>
           </dd>
         </div>
+        <%= if @asset.content_hash do %>
+          <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+            <dt class="text-sm font-medium text-gray-500">Content Hash</dt>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono text-xs">
+              {@asset.content_hash}
+            </dd>
+          </div>
+        <% end %>
         <%= if @asset.original_hash do %>
           <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
             <dt class="text-sm font-medium text-gray-500">Original Hash</dt>
-            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono text-xs"><%= @asset.original_hash %></dd>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono text-xs">
+              {@asset.original_hash}
+            </dd>
           </div>
         <% end %>
         <%= if @asset.reference_type do %>
           <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
             <dt class="text-sm font-medium text-gray-500">Reference Type</dt>
-            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><%= @asset.reference_type %></dd>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+              {@asset.reference_type}
+            </dd>
           </div>
           <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
             <dt class="text-sm font-medium text-gray-500">Reference ID</dt>
-            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><%= @asset.reference_id %></dd>
+            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+              {@asset.reference_id}
+            </dd>
           </div>
         <% end %>
       </dl>
@@ -65,29 +120,41 @@
 
   <%= if String.starts_with?(@asset.content_type, "image/") do %>
     <div class="mt-8 bg-white shadow sm:rounded-lg overflow-hidden flex flex-col items-center p-6">
-       <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">Preview</h3>
-       <img class="max-w-full h-auto max-h-[60vh] rounded-lg shadow-sm border border-gray-200" src={"/api/v1/assets#{@asset.url_suffix}"} alt={@asset.name} />
+      <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">
+        Preview
+      </h3>
+      <img
+        class="max-w-full h-auto max-h-[60vh] rounded-lg shadow-sm border border-gray-200"
+        src={"/api/v1/assets#{@asset.url_suffix}"}
+        alt={@asset.name}
+      />
     </div>
   <% else %>
-     <%= if String.starts_with?(@asset.content_type, "video/") do %>
+    <%= if String.starts_with?(@asset.content_type, "video/") do %>
       <div class="mt-8 bg-white shadow sm:rounded-lg overflow-hidden flex flex-col items-center p-6">
-         <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">Preview</h3>
-         <video controls class="max-w-full h-auto max-h-[60vh] rounded-lg shadow-sm border border-gray-200">
-           <source src={"/api/v1/assets#{@asset.url_suffix}"} type={@asset.content_type}>
-           Your browser does not support the video tag.
-         </video>
+        <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">
+          Preview
+        </h3>
+        <video
+          controls
+          class="max-w-full h-auto max-h-[60vh] rounded-lg shadow-sm border border-gray-200"
+        >
+          <source src={"/api/v1/assets#{@asset.url_suffix}"} type={@asset.content_type} />
+          Your browser does not support the video tag.
+        </video>
       </div>
     <% else %>
       <%= if String.starts_with?(@asset.content_type, "audio/") do %>
         <div class="mt-8 bg-white shadow sm:rounded-lg overflow-hidden flex flex-col p-6">
-           <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">Preview</h3>
-           <audio controls class="w-full">
-             <source src={"/api/v1/assets#{@asset.url_suffix}"} type={@asset.content_type}>
-             Your browser does not support the audio element.
-           </audio>
+          <h3 class="text-lg leading-6 font-medium text-gray-900 self-start mb-6 w-full border-b pb-2">
+            Preview
+          </h3>
+          <audio controls class="w-full">
+            <source src={"/api/v1/assets#{@asset.url_suffix}"} type={@asset.content_type} />
+            Your browser does not support the audio element.
+          </audio>
         </div>
       <% end %>
     <% end %>
   <% end %>
-
 </div>

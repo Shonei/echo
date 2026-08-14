@@ -20,20 +20,7 @@ defmodule EchoWeb.AssetController do
 
     conn
     |> put_status(:ok)
-    |> json(%{
-      data:
-        Enum.map(assets, fn asset ->
-          %{
-            id: asset.id,
-            name: asset.name,
-            url_suffix: asset.url_suffix,
-            content_type: asset.content_type,
-            reference_type: asset.reference_type,
-            reference_id: asset.reference_id,
-            inserted_at: asset.inserted_at
-          }
-        end)
-    })
+    |> json(%{data: Enum.map(assets, &asset_json/1)})
   end
 
   @doc """
@@ -115,19 +102,7 @@ defmodule EchoWeb.AssetController do
         {:ok, assets} when is_list(assets) ->
           conn
           |> put_status(:ok)
-          |> json(%{
-            data:
-              Enum.map(assets, fn asset ->
-                %{
-                  id: asset.id,
-                  name: asset.name,
-                  url_suffix: asset.url_suffix,
-                  content_type: asset.content_type,
-                  reference_type: asset.reference_type,
-                  reference_id: asset.reference_id
-                }
-              end)
-          })
+          |> json(%{data: Enum.map(assets, &asset_json/1)})
 
         {:error, :already_exists} ->
           conn
@@ -215,6 +190,24 @@ defmodule EchoWeb.AssetController do
     else
       "attachment; filename=\"#{filename}\""
     end
+  end
+
+  defp asset_json(asset) do
+    %{
+      id: asset.id,
+      name: asset.name,
+      url_suffix: asset.url_suffix,
+      content_type: asset.content_type,
+      reference_type: asset.reference_type,
+      reference_id: asset.reference_id,
+      filename: asset.filename,
+      byte_size: asset.byte_size,
+      width: asset.width,
+      height: asset.height,
+      variant: asset.variant,
+      content_hash: asset.content_hash,
+      inserted_at: asset.inserted_at
+    }
   end
 
   defp maybe_add_opt(opts, _key, nil), do: opts

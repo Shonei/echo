@@ -105,13 +105,26 @@ defmodule Echo.Storage.Assets do
 
   @doc """
   Uploads a file to S3 and creates database records.
-  If the file is an image, it generates and stores 4 versions: original, background, content, and thumbnail.
+
+  If the file is an image, it generates and stores 4 versions: original,
+  background, content, and thumbnail.
+
+  Options:
+
+    * `:filename` - original client filename. Defaults to the basename of `path`.
+    * `:reference_type` / `:reference_id` - optional link to another resource
+    * `:storage` - module with `upload_object/3`. Defaults to `S3Client`.
+
+  Each stored file gets `filename`, `byte_size`, `variant`, `content_hash`,
+  and for images `width` / `height`.
 
   Returns `{:ok, [assets]}` on success or `{:error, reason}` on failure.
   """
   def upload_asset(path, body, content_type, opts \\ []) do
     reference_type = Keyword.get(opts, :reference_type)
     reference_id = Keyword.get(opts, :reference_id)
+    filename = Keyword.get(opts, :filename) || Path.basename(path)
+    storage = Keyword.get(opts, :storage, S3Client)
     file_size_bytes = byte_size(body)
 
     :telemetry.span(
@@ -125,9 +138,25 @@ defmodule Echo.Storage.Assets do
       fn ->
         result =
           if String.starts_with?(content_type, "image/") do
-            handle_image_upload(path, body, content_type, reference_type, reference_id)
+            handle_image_upload(
+              path,
+              body,
+              content_type,
+              reference_type,
+              reference_id,
+              filename,
+              storage
+            )
           else
-            handle_regular_upload(path, body, content_type, reference_type, reference_id)
+            handle_regular_upload(
+              path,
+              body,
+              content_type,
+              reference_type,
+              reference_id,
+              filename,
+              storage
+            )
           end
 
         {result, upload_span_metadata(path, content_type, file_size_bytes, result)}
@@ -170,15 +199,35 @@ defmodule Echo.Storage.Assets do
 
   defp format_upload_error(reason), do: inspect(reason)
 
-  defp handle_regular_upload(path, body, content_type, reference_type, reference_id) do
+  defp handle_regular_upload(
+         path,
+         body,
+         content_type,
+         reference_type,
+         reference_id,
+         filename,
+         storage
+       ) do
     hash = compute_hash(path, content_type, reference_type, reference_id)
 
     if asset_exists_by_hash?(hash) do
       {:error, :already_exists}
     else
-      case S3Client.upload_object(path, body, content_type) do
+      case storage.upload_object(path, body, content_type) do
         :ok ->
-          case create_asset_record(path, content_type, hash, reference_type, reference_id) do
+          case create_asset_record(%{
+                 path: path,
+                 content_type: content_type,
+                 original_hash: hash,
+                 reference_type: reference_type,
+                 reference_id: reference_id,
+                 filename: filename,
+                 byte_size: byte_size(body),
+                 width: nil,
+                 height: nil,
+                 variant: "original",
+                 content_hash: content_hash(body)
+               }) do
             {:ok, asset} -> {:ok, [asset]}
             {:error, reason} -> {:error, reason}
           end
@@ -189,7 +238,15 @@ defmodule Echo.Storage.Assets do
     end
   end
 
-  defp handle_image_upload(path, body, content_type, reference_type, reference_id) do
+  defp handle_image_upload(
+         path,
+         body,
+         content_type,
+         reference_type,
+         reference_id,
+         filename,
+         storage
+       ) do
     ext = Path.extname(path)
     base = String.replace_suffix(path, ext, "")
 
@@ -203,81 +260,99 @@ defmodule Echo.Storage.Assets do
       {:thumbnail, base <> "-thumbnail.jpeg", 400, ".jpeg"}
     ]
 
-    # Generate images first
-    generated_images =
-      Enum.map(base_sizes, fn {type, current_path, width, target_ext} ->
-        processed_body =
-          if type == :original do
-            body
-          else
-            process_image(body, width, target_ext, current_path, type)
+    case generate_image_variants(
+           base_sizes,
+           body,
+           content_type,
+           reference_type,
+           reference_id,
+           filename
+         ) do
+      {:error, reason} ->
+        {:error, {:image_processing_failed, reason}}
+
+      {:ok, generated_images} ->
+        hashes = Enum.map(generated_images, & &1.original_hash)
+
+        if any_asset_exists_by_hashes?(hashes) do
+          {:error, :already_exists}
+        else
+          upload_result =
+            Enum.reduce_while(generated_images, :ok, fn img, _acc ->
+              case storage.upload_object(img.path, img.body, img.content_type) do
+                :ok -> {:cont, :ok}
+                {:error, reason} -> {:halt, {:error, reason}}
+              end
+            end)
+
+          case upload_result do
+            :ok ->
+              case Repo.transaction(fn ->
+                     Enum.map(generated_images, &create_asset_record!/1)
+                   end) do
+                {:ok, assets} -> {:ok, assets}
+                {:error, {:db_insert_failed, changeset}} -> {:error, changeset}
+                {:error, reason} -> {:error, reason}
+              end
+
+            {:error, reason} ->
+              {:error, {:s3_upload_failed, reason}}
           end
-
-        current_content_type =
-          if target_ext in [".jpeg", ".jpg"], do: "image/jpeg", else: content_type
-
-        hash = compute_hash(current_path, current_content_type, reference_type, reference_id)
-
-        %{
-          path: current_path,
-          body: processed_body,
-          content_type: current_content_type,
-          hash: hash,
-          variant: type
-        }
-      end)
-
-    # Check for processing errors
-    processing_error =
-      Enum.find(generated_images, fn img ->
-        case img.body do
-          {:error, _} -> true
-          _ -> false
         end
-      end)
-
-    if processing_error do
-      {:error, {:image_processing_failed, elem(processing_error.body, 1)}}
-    else
-      # Check if ANY image hash already exists
-      hashes = Enum.map(generated_images, & &1.hash)
-
-      if any_asset_exists_by_hashes?(hashes) do
-        {:error, :already_exists}
-      else
-        # First upload all images
-        upload_result =
-          Enum.reduce_while(generated_images, :ok, fn img, _acc ->
-            case S3Client.upload_object(img.path, img.body, img.content_type) do
-              :ok -> {:cont, :ok}
-              {:error, reason} -> {:halt, {:error, reason}}
-            end
-          end)
-
-        case upload_result do
-          :ok ->
-            # After, update the DB in a transaction
-            case Repo.transaction(fn ->
-                   Enum.map(generated_images, fn img ->
-                     create_asset_record!(
-                       img.path,
-                       img.content_type,
-                       img.hash,
-                       reference_type,
-                       reference_id
-                     )
-                   end)
-                 end) do
-              {:ok, assets} -> {:ok, assets}
-              {:error, {:db_insert_failed, changeset}} -> {:error, changeset}
-              {:error, reason} -> {:error, reason}
-            end
-
-          {:error, reason} ->
-            {:error, {:s3_upload_failed, reason}}
-        end
-      end
     end
+  end
+
+  defp generate_image_variants(
+         base_sizes,
+         body,
+         content_type,
+         reference_type,
+         reference_id,
+         filename
+       ) do
+    Enum.reduce_while(base_sizes, [], fn {type, current_path, width, target_ext}, acc ->
+      case prepare_variant(type, body, width, target_ext, current_path) do
+        {:ok, processed_body, img_width, img_height} ->
+          current_content_type =
+            if target_ext in [".jpeg", ".jpg"], do: "image/jpeg", else: content_type
+
+          variant = %{
+            path: current_path,
+            body: processed_body,
+            content_type: current_content_type,
+            original_hash:
+              compute_hash(current_path, current_content_type, reference_type, reference_id),
+            reference_type: reference_type,
+            reference_id: reference_id,
+            filename: filename,
+            byte_size: byte_size(processed_body),
+            width: img_width,
+            height: img_height,
+            variant: Atom.to_string(type),
+            content_hash: content_hash(processed_body)
+          }
+
+          {:cont, [variant | acc]}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
+    |> case do
+      {:error, reason} -> {:error, reason}
+      variants -> {:ok, Enum.reverse(variants)}
+    end
+  end
+
+  defp prepare_variant(:original, body, _width, _target_ext, _path) do
+    case image_dimensions(body) do
+      {:ok, width, height} -> {:ok, body, width, height}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp prepare_variant(type, body, width, target_ext, path) do
+    process_image(body, width, target_ext, path, type)
   end
 
   defp compute_hash(path, content_type, reference_type, reference_id) do
@@ -300,25 +375,33 @@ defmodule Echo.Storage.Assets do
     |> Repo.exists?()
   end
 
-  defp create_asset_record(path, content_type, original_hash, reference_type, reference_id) do
-    url = build_asset_url(path)
-    url_suffix = build_url_suffix(path)
-
-    attrs = %{
-      name: path,
-      url: url,
-      url_suffix: url_suffix,
-      content_type: content_type,
-      reference_type: reference_type,
-      reference_id: reference_id,
-      original_hash: original_hash
-    }
-
-    create_asset(attrs)
+  defp content_hash(body) do
+    :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
   end
 
-  defp create_asset_record!(path, content_type, original_hash, reference_type, reference_id) do
-    case create_asset_record(path, content_type, original_hash, reference_type, reference_id) do
+  defp create_asset_record(attrs) do
+    path = attrs.path
+
+    %{
+      name: path,
+      url: build_asset_url(path),
+      url_suffix: build_url_suffix(path),
+      content_type: attrs.content_type,
+      reference_type: attrs.reference_type,
+      reference_id: attrs.reference_id,
+      original_hash: attrs.original_hash,
+      filename: attrs.filename,
+      byte_size: attrs.byte_size,
+      width: attrs.width,
+      height: attrs.height,
+      variant: attrs.variant,
+      content_hash: attrs.content_hash
+    }
+    |> create_asset()
+  end
+
+  defp create_asset_record!(attrs) do
+    case create_asset_record(attrs) do
       {:ok, asset} -> asset
       {:error, changeset} -> Repo.rollback({:db_insert_failed, changeset})
     end
@@ -344,7 +427,7 @@ defmodule Echo.Storage.Assets do
 
   # Private helpers
 
-  # Resize image and return binary
+  # Resize image and return {body, width, height}
   defp process_image(body, width, target_ext, path, variant) do
     :telemetry.span(
       [:echo, :storage, :image, :process],
@@ -359,7 +442,7 @@ defmodule Echo.Storage.Assets do
         result =
           with {:ok, thumbnail} <- Operation.thumbnail_buffer(body, width),
                {:ok, buffer} <- Image.write_to_buffer(thumbnail, target_ext) do
-            buffer
+            {:ok, buffer, Image.width(thumbnail), Image.height(thumbnail)}
           else
             {:error, reason} -> {:error, reason}
           end
@@ -377,11 +460,12 @@ defmodule Echo.Storage.Assets do
                 error: inspect(reason)
               }
 
-            buffer when is_binary(buffer) ->
+            {:ok, buffer, out_width, out_height} ->
               %{
                 path: path,
                 variant: variant,
-                width: width,
+                width: out_width,
+                height: out_height,
                 target_ext: target_ext,
                 file_size_bytes: byte_size(buffer),
                 result: :ok
@@ -391,6 +475,13 @@ defmodule Echo.Storage.Assets do
         {result, metadata}
       end
     )
+  end
+
+  defp image_dimensions(body) do
+    case Image.new_from_buffer(body) do
+      {:ok, image} -> {:ok, Image.width(image), Image.height(image)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp build_asset_url(path) do

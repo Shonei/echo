@@ -45,7 +45,7 @@ defmodule EchoWeb.AssetUIController do
     # Use filename as path but we can also organize them under an "uploads/" prefix
     path = "uploads/#{System.unique_integer([:positive])}-#{upload.filename}"
 
-    case Assets.upload_asset(path, body, content_type, []) do
+    case Assets.upload_asset(path, body, content_type, filename: upload.filename) do
       {:ok, _assets} ->
         conn
         |> put_flash(:info, "Asset uploaded successfully.")
@@ -104,5 +104,4 @@ defmodule EchoWeb.AssetUIController do
       _ -> "application/octet-stream"
     end
   end
-
 end
