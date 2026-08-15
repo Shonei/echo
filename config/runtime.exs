@@ -60,12 +60,19 @@ if config_env() in [:dev, :test] do
       """
 
   repo_url =
-    if config_env() == :test do
-      uri = URI.parse(postgres_url)
-      partition = System.get_env("MIX_TEST_PARTITION") || ""
-      URI.to_string(%{uri | path: "/echo_test#{partition}"})
-    else
-      postgres_url
+    cond do
+      config_env() != :test ->
+        postgres_url
+
+      # GitHub Actions sets CI=true. Use the URL as configured so a hosted
+      # Postgres secret does not need CREATE DATABASE on a second name.
+      System.get_env("CI") in ~w(true 1) ->
+        postgres_url
+
+      true ->
+        uri = URI.parse(postgres_url)
+        partition = System.get_env("MIX_TEST_PARTITION") || ""
+        URI.to_string(%{uri | path: "/echo_test#{partition}"})
     end
 
   config :echo, Echo.Repo, url: repo_url
