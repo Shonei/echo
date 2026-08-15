@@ -5,6 +5,14 @@ import Config
 # Writes are committed (no SQL sandbox) so rows accumulate across runs.
 config :echo, Echo.Repo, pool_size: System.schedulers_online() * 2
 
+# S3 client: same env vars as production. Integration tests skip when these
+# are unset so `mix test` still works without a bucket.
+config :echo, Echo.Storage.S3Client,
+  endpoint: System.get_env("S3_ENDPOINT"),
+  region: System.get_env("S3_REGION") || "auto",
+  bucket: System.get_env("S3_BUCKET"),
+  access_key_id: System.get_env("S3_ACCESS_KEY_ID")
+
 # RequestCleanupJob would delete old echo requests; keep them for index/query work.
 config :echo, :request_cleanup_enabled, false
 

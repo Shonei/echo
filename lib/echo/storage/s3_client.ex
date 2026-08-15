@@ -23,6 +23,17 @@ defmodule Echo.Storage.S3Client do
 
   defstruct [:endpoint, :region, :bucket, :access_key_id, :secret_access_key, :finch_name]
 
+  @type t :: %__MODULE__{
+          endpoint: String.t(),
+          region: String.t(),
+          bucket: String.t(),
+          access_key_id: String.t(),
+          secret_access_key: String.t(),
+          finch_name: atom()
+        }
+
+  @type error :: {:error, term()}
+
   # Client API
 
   @doc """
@@ -34,7 +45,8 @@ defmodule Echo.Storage.S3Client do
 
       {:ok, body, "image/png"} = S3Client.get_object("images/photo.png")
   """
-  def get_object(path) do
+  @spec get_object(String.t()) :: {:ok, binary(), String.t()} | error()
+  def get_object(path) when is_binary(path) do
     :telemetry.span(
       [:echo, :storage, :s3, :download],
       %{path: path},
@@ -69,7 +81,9 @@ defmodule Echo.Storage.S3Client do
 
       :ok = S3Client.upload_object("images/photo.png", binary_data, "image/png")
   """
-  def upload_object(path, body, content_type \\ "application/octet-stream") do
+  @spec upload_object(String.t(), binary(), String.t()) :: :ok | error()
+  def upload_object(path, body, content_type \\ "application/octet-stream")
+      when is_binary(path) and is_binary(body) and is_binary(content_type) do
     file_size = byte_size(body)
 
     :telemetry.span(
@@ -112,7 +126,10 @@ defmodule Echo.Storage.S3Client do
 
       {:ok, objects} = S3Client.list_objects("images/")
   """
-  def list_objects(prefix \\ "") do
+  @spec list_objects(String.t()) ::
+          {:ok, [%{key: String.t(), last_modified: String.t(), size: non_neg_integer()}]}
+          | error()
+  def list_objects(prefix \\ "") when is_binary(prefix) do
     do_list_objects(get_config(), prefix)
   end
 
@@ -125,7 +142,8 @@ defmodule Echo.Storage.S3Client do
 
       :ok = S3Client.delete_object("images/photo.png")
   """
-  def delete_object(path) do
+  @spec delete_object(String.t()) :: :ok | error()
+  def delete_object(path) when is_binary(path) do
     do_delete_object(get_config(), path)
   end
 
@@ -201,8 +219,12 @@ defmodule Echo.Storage.S3Client do
   end
 
   defp do_list_objects(state, prefix) do
-    query = if prefix != "", do: "?list-type=2&prefix=#{URI.encode(prefix)}", else: "?list-type=2"
-    url = build_url(state, "") <> query
+    params =
+      [{"list-type", "2"}] ++
+        if(prefix != "", do: [{"prefix", prefix}], else: [])
+
+    query = aws_query(params)
+    url = build_url(state, "") <> "?" <> query
     headers = sign_request(state, "GET", "", "", [], query)
 
     req = Finch.build(:get, url, headers)
@@ -276,6 +298,8 @@ defmodule Echo.Storage.S3Client do
 
     signed_headers = headers |> Enum.map(&elem(&1, 0)) |> Enum.sort() |> Enum.join(";")
 
+    # S3 keeps `/` in object keys as path separators. Query values are
+    # different: SigV4 requires `/` as %2F (see aws_query/1).
     canonical_path = if path == "", do: "/#{bucket}", else: "/#{bucket}/#{URI.encode(path)}"
     canonical_query = String.trim_leading(query, "?")
 
@@ -313,6 +337,18 @@ defmodule Echo.Storage.S3Client do
     |> hmac_sha256("aws4_request")
   end
 
+  # Query-string encoding for SigV4. Unlike URI.encode/1, this encodes `/` to
+  # %2F. Do not use it for object keys — S3 treats those slashes as path
+  # separators (the previous GET/PUT 403s were from encoding them).
+  defp aws_query(params) do
+    params
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {key, value} -> aws_encode(key) <> "=" <> aws_encode(value) end)
+    |> Enum.join("&")
+  end
+
+  defp aws_encode(string), do: URI.encode(string, &URI.char_unreserved?/1)
+
   defp hash_sha256(data), do: :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
   defp hmac_sha256(key, data), do: :crypto.mac(:hmac, :sha256, key, data)
   defp hmac_sha256_hex(key, data), do: hmac_sha256(key, data) |> Base.encode16(case: :lower)
@@ -328,15 +364,26 @@ defmodule Echo.Storage.S3Client do
   end
 
   defp parse_list_objects_response(xml_body) do
-    # Simple XML parsing for S3 ListObjectsV2 response
-    ~r/<Contents>.*?<Key>(?<key>.*?)<\/Key>.*?<LastModified>(?<last_modified>.*?)<\/LastModified>.*?<Size>(?<size>\d+)<\/Size>.*?<\/Contents>/s
-    |> Regex.scan(xml_body, capture: :all_names)
-    |> Enum.map(fn [key, last_modified, size] ->
+    # Tag order inside <Contents> varies across S3 implementations, so pull
+    # Key / LastModified / Size independently from each block.
+    ~r/<Contents>(.*?)<\/Contents>/s
+    |> Regex.scan(xml_body, capture: :all_but_first)
+    |> Enum.map(fn [block] ->
       %{
-        key: key,
-        last_modified: last_modified,
-        size: String.to_integer(size)
+        key: xml_field(block, "Key"),
+        last_modified: xml_field(block, "LastModified"),
+        size: block |> xml_field("Size") |> to_size()
       }
     end)
   end
+
+  defp xml_field(block, tag) do
+    case Regex.run(~r/<#{tag}>(.*?)<\/#{tag}>/s, block) do
+      [_, value] -> value
+      nil -> ""
+    end
+  end
+
+  defp to_size(""), do: 0
+  defp to_size(value), do: String.to_integer(value)
 end
