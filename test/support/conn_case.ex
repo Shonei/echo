@@ -1,10 +1,10 @@
 defmodule EchoWeb.ConnCase do
   @moduledoc """
-  This module defines the test case to be used by tests that require setting up
-  a connection.
+  Setup for HTTP/JSON contract tests.
 
-  The database is shared and long-lived. Seed unique fields with `unique/1`
-  from `Echo.DataCase`.
+  Arrange with fixtures (`blog_fixture/1`), act through the router, assert on
+  status and the JSON body. Seed unique fields with `unique/1`. The database is
+  long-lived: look up this test's row, do not assume an empty index.
   """
 
   use ExUnit.CaseTemplate
@@ -19,6 +19,7 @@ defmodule EchoWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import Echo.DataCase
+      import Echo.ContentFixtures
       import EchoWeb.ConnCase
     end
   end

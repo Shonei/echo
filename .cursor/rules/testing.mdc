@@ -1,0 +1,25 @@
+---
+description: How Echo tests are layered and how to seed the long-lived database
+alwaysApply: true
+---
+
+# Testing
+
+The test database and S3 bucket are **long-lived**. Rows commit. Do not truncate, sandbox-rollback, or assert that a shared collection is empty.
+
+## Layers
+
+- **Unit** (`ExUnit.Case`): no DB, HTTP, or S3. Pure functions (signing, payloads, presets).
+- **Context** (`Echo.DataCase`): DB, no HTTP. Rules the JSON API would only test clumsily (when a revision is *not* taken, id-or-slug lookup, changeset format).
+- **HTTP** (`EchoWeb.ConnCase`): the public JSON contract. One file per controller, one `describe` per endpoint. Arrange with fixtures; act through `get`/`post`/`put`/`delete`.
+- **External** (`*_integration_test.exs`): real S3. Skip when env vars are missing. Unique `echo-test/<run>/` prefixes; delete those objects on exit. Keep DB rows.
+
+Do not test the same rule in two layers. HTTP owns the Blog API. Context owns snapshot policy and lookup. Unit tests do not insert rows.
+
+## Seeding
+
+Unique columns (slugs, paths, names, tokens) go through `unique/1` or `unique_digits/0` in `Echo.DataCase`. Never `System.unique_integer/1` alone — it resets each `mix test` and collides with leftover CI rows.
+
+Assert on **this test's** row (`id`, slug, path). Index/list checks use `in`, not `==`. `== []` is only valid when scoped to this test's id (e.g. revisions for `blog.id`). Do not call `list_blogs()` to prove a slug was not created — look that slug up.
+
+Shared factories live in `test/support/fixtures/` (e.g. `blog_fixture/1`). Do not copy-paste fixture functions into test files.

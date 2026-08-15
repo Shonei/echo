@@ -1,9 +1,10 @@
 defmodule Echo.DataCase do
   @moduledoc """
-  Setup for tests that touch the database.
+  Setup for context tests that touch the database but not HTTP.
 
   Tests commit to a long-lived `echo_test` database. Do not assume tables are
-  empty. Seed unique columns (slugs, paths, names) with `unique/1`.
+  empty. Seed unique columns with `unique/1`. Assert on this test's row, not
+  that a shared collection is empty. HTTP contracts belong in `ConnCase`.
   """
 
   use ExUnit.CaseTemplate
@@ -16,6 +17,7 @@ defmodule Echo.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Echo.DataCase
+      import Echo.ContentFixtures
     end
   end
 

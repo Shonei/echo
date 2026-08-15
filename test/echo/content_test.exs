@@ -2,45 +2,8 @@ defmodule Echo.ContentTest do
   use Echo.DataCase, async: true
 
   alias Echo.Content
-  alias Echo.Content.Blog
 
-  defp blog_fixture(attrs \\ %{}) do
-    {:ok, blog} =
-      attrs
-      |> Enum.into(%{
-        title: unique("post"),
-        slug: unique("post"),
-        status: "draft",
-        content: "first draft"
-      })
-      |> Content.create_blog()
-
-    blog
-  end
-
-  describe "update_blog_content/2 automatic revisions" do
-    test "snapshots the replaced content" do
-      blog = blog_fixture(content: "first draft")
-
-      {:ok, updated} = Content.update_blog_content(blog, "second draft")
-
-      assert updated.content == "second draft"
-      assert [revision] = Content.list_blog_revisions(blog.id)
-      assert revision.content == "first draft"
-      assert revision.blog_id == blog.id
-      assert revision.note == "Automatic snapshot before save"
-    end
-
-    test "keeps one revision per save, newest first" do
-      blog = blog_fixture(content: "v1")
-
-      {:ok, blog} = Content.update_blog_content(blog, "v2")
-      {:ok, blog} = Content.update_blog_content(blog, "v3")
-      {:ok, _blog} = Content.update_blog_content(blog, "v4")
-
-      assert ["v3", "v2", "v1"] = Enum.map(Content.list_blog_revisions(blog.id), & &1.content)
-    end
-
+  describe "update_blog_content/2 snapshot policy" do
     test "does not snapshot when the content is unchanged" do
       blog = blog_fixture(content: "same")
 
@@ -69,7 +32,7 @@ defmodule Echo.ContentTest do
     end
   end
 
-  describe "update_blog_metadata/2 automatic revisions" do
+  describe "update_blog_metadata/2" do
     test "ignores a content key, so content cannot bypass the snapshot" do
       blog = blog_fixture(content: "before")
 
@@ -138,18 +101,11 @@ defmodule Echo.ContentTest do
 
     test "accepts lowercase dashed slugs" do
       slug = unique("a-good-slug")
-      assert {:ok, _} = Content.create_blog(%{title: unique("post"), slug: slug, status: "draft"})
-    end
-  end
 
-  describe "delete_blog/1" do
-    test "removes the blog and its revisions" do
-      blog = blog_fixture(content: "v1")
-      {:ok, blog} = Content.update_blog_content(blog, "v2")
-      assert [_] = Content.list_blog_revisions(blog.id)
+      assert {:ok, blog} =
+               Content.create_blog(%{title: unique("post"), slug: slug, status: "draft"})
 
-      assert {:ok, %Blog{}} = Content.delete_blog(blog)
-      assert Content.list_blog_revisions(blog.id) == []
+      assert blog.slug == slug
     end
   end
 end
