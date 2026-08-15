@@ -44,6 +44,12 @@ defmodule EchoWeb.Router do
     plug EchoWeb.Plugs.ValidateToken
   end
 
+  # Same gate as the HTML UI. The agent-chat JSON PUT talks to Gemini; it must
+  # not be reachable without the browser basic-auth credentials.
+  pipeline :basic_auth do
+    plug :require_basic_auth
+  end
+
   # Reads that are public but show more to an authenticated caller. Never halts;
   # sets conn.assigns.authenticated? for the controller to branch on.
   pipeline :api_maybe_auth do
@@ -64,7 +70,11 @@ defmodule EchoWeb.Router do
   pipeline :asset_upload do
     # Accept any content type for asset uploads
     plug EchoWeb.Plugs.AcceptAny
-    # Rate limit: 1 upload per 5 seconds per IP
+  end
+
+  pipeline :rate_limit_uploads do
+    # Rate limit: 1 upload per 5 seconds per IP. Runs after auth so anonymous
+    # callers cannot burn the slot.
     plug EchoWeb.Plugs.RateLimit, interval_ms: 5000
   end
 
@@ -100,7 +110,7 @@ defmodule EchoWeb.Router do
   end
 
   scope "/api/agent-chat", EchoWeb do
-    pipe_through :api
+    pipe_through [:api, :basic_auth]
 
     put "/:id/content", AgentChatController, :content
   end
@@ -120,6 +130,7 @@ defmodule EchoWeb.Router do
       resources "/blogs", BlogController, only: [:create, :update, :delete]
       put "/blogs/:blog_id/content", BlogController, :update_content
       get "/blogs/:blog_id/revisions", RevisionController, :index
+      get "/assets", AssetController, :index
     end
 
     scope "/ai" do
@@ -131,9 +142,6 @@ defmodule EchoWeb.Router do
       post "/agents/editor", AIConversationController, :editor
       post "/agents/photographer", AIConversationController, :photographer
     end
-
-    # List assets endpoint (uses JSON parsing)
-    get "/assets", AssetController, :index
   end
 
   # Assets API - handles binary uploads/downloads with any content type
@@ -142,9 +150,9 @@ defmodule EchoWeb.Router do
     get "/*path", AssetController, :show
   end
 
-  # Asset uploads with rate limiting (1 upload per 5 seconds)
+  # Asset uploads: auth first, then rate limit (1 upload per 5 seconds)
   scope "/api/v1/assets", EchoWeb do
-    pipe_through [:asset_upload, :api_auth]
+    pipe_through [:asset_upload, :api_auth, :rate_limit_uploads]
     put "/*path", AssetController, :update
   end
 

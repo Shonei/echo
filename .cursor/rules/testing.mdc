@@ -23,3 +23,7 @@ Unique columns (slugs, paths, names, tokens) go through `unique/1` or `unique_di
 Assert on **this test's** row (`id`, slug, path). Index/list checks use `in`, not `==`. `== []` is only valid when scoped to this test's id (e.g. revisions for `blog.id`). Do not call `list_blogs()` to prove a slug was not created — look that slug up.
 
 Shared factories live in `test/support/fixtures/` (e.g. `blog_fixture/1`). Do not copy-paste fixture functions into test files.
+
+## Auth
+
+Gemini, S3 uploads, and writes must 401 without a valid token. Lock new wallet routes in `test/echo_web/auth_required_test.exs` (`:api_auth` or `:basic_auth`). Never add a Gemini-calling route on `:api` alone.

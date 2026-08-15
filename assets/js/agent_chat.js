@@ -179,6 +179,7 @@ document.addEventListener("DOMContentLoaded", function () {
     try {
       const response = await fetch(`/api/agent-chat/${sessionId}/content`, {
         method: "PUT",
+        credentials: "same-origin",
         headers: {
           "Content-Type": "application/json",
           "Accept": "application/json"

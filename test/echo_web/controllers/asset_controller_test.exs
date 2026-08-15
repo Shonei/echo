@@ -21,7 +21,7 @@ defmodule EchoWeb.AssetControllerTest do
         content_hash: hash
       })
 
-    response = json_response(get(conn, "/api/v1/assets"), 200)
+    response = json_response(get(authenticate(conn), "/api/v1/assets"), 200)
     listed = Enum.find(response["data"], &(&1["id"] == asset.id))
 
     assert listed["filename"] == filename
