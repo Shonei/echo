@@ -3,8 +3,9 @@ defmodule Echo.Storage.AssetsIntegrationTest do
 
   alias Echo.Repo
   alias Echo.Storage.{Asset, Assets, S3Client}
-  alias Vix.Vips.{Image, Operation}
+  alias Vix.Vips.Image
 
+  @jpeg_fixture Path.expand("test.jpeg", __DIR__)
   @required_env ~w(S3_ENDPOINT S3_BUCKET S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY)
 
   setup do
@@ -52,18 +53,40 @@ defmodule Echo.Storage.AssetsIntegrationTest do
     assert {:error, :not_found} = S3Client.get_object(path)
   end
 
-  test "upload_asset stores four image variants in S3 and the database" do
+  test "handle_image_upload stores four JPEG variants in S3 and the database" do
     prefix = "echo-test/#{unique("run")}"
-    path = "#{prefix}/#{unique("photo")}.png"
-    filename = "#{unique("cat")}.png"
-    body = png_bytes(64, 32)
+    path = "#{prefix}/#{unique("photo")}.jpeg"
+    filename = "#{unique("office")}.jpeg"
+    body = File.read!(@jpeg_fixture)
+    ext = Path.extname(path)
+    base = String.replace_suffix(path, ext, "")
     cleanup_prefix(prefix)
 
+    {:ok, source} = Image.new_from_buffer(body)
+    source_width = Image.width(source)
+    source_height = Image.height(source)
+
     assert {:ok, assets} =
-             Assets.upload_asset(path, body, "image/png", filename: filename)
+             Assets.upload_asset(path, body, "image/jpeg", filename: filename)
 
     by_variant = Map.new(assets, &{&1.variant, &1})
     assert Map.keys(by_variant) |> Enum.sort() == ~w(background content original thumbnail)
+
+    original = by_variant["original"]
+    assert original.name == base <> "-original.jpeg"
+    assert original.width == source_width
+    assert original.height == source_height
+    assert original.byte_size == byte_size(body)
+    assert original.content_type == "image/jpeg"
+
+    assert by_variant["background"].name == base <> "-background.jpeg"
+    assert by_variant["background"].width <= 1920
+    assert by_variant["content"].name == base <> "-content.jpeg"
+    assert by_variant["content"].width <= 800
+    assert by_variant["content"].width < original.width
+    assert by_variant["thumbnail"].name == base <> "-thumbnail.jpeg"
+    assert by_variant["thumbnail"].content_type == "image/jpeg"
+    assert by_variant["thumbnail"].width <= 400
 
     for asset <- assets do
       assert asset.filename == filename
@@ -72,9 +95,10 @@ defmodule Echo.Storage.AssetsIntegrationTest do
       assert byte_size(stored) == asset.byte_size
     end
 
-    original = by_variant["original"]
-    assert original.width == 64
-    assert original.height == 32
+    assert {:ok, ^body, _} = S3Client.get_object(original.name)
+
+    assert {:error, :already_exists} =
+             Assets.upload_asset(path, body, "image/jpeg", filename: filename)
   end
 
   defp cleanup_prefix(prefix) do
@@ -84,12 +108,6 @@ defmodule Echo.Storage.AssetsIntegrationTest do
         _ -> :ok
       end
     end)
-  end
-
-  defp png_bytes(width, height) do
-    {:ok, image} = Operation.black(width, height)
-    {:ok, buffer} = Image.write_to_buffer(image, ".png")
-    buffer
   end
 
   defp present?(value), do: is_binary(value) and value != ""
