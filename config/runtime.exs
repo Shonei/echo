@@ -51,6 +51,26 @@ if s3_secret = System.get_env("S3_SECRET_ACCESS_KEY") do
   config :echo, Echo.Storage.S3Client, secret_access_key: s3_secret
 end
 
+if config_env() in [:dev, :test] do
+  postgres_url =
+    System.get_env("POSTGRES_URL") ||
+      raise """
+      environment variable POSTGRES_URL is missing.
+      For example: postgres://postgres:postgres@localhost:5432/echo_dev
+      """
+
+  repo_url =
+    if config_env() == :test do
+      uri = URI.parse(postgres_url)
+      partition = System.get_env("MIX_TEST_PARTITION") || ""
+      URI.to_string(%{uri | path: "/echo_test#{partition}"})
+    else
+      postgres_url
+    end
+
+  config :echo, Echo.Repo, url: repo_url
+end
+
 if config_env() == :prod do
   config :echo, axiom_token: System.get_env("AXIOM_TOKEN")
 

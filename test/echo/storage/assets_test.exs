@@ -16,7 +16,7 @@ defmodule Echo.Storage.AssetsTest do
   end
 
   defp asset_attrs(overrides) do
-    path = "files/doc-#{System.unique_integer([:positive])}.txt"
+    path = "#{unique("files")}.txt"
 
     Map.merge(
       %{
@@ -35,7 +35,7 @@ defmodule Echo.Storage.AssetsTest do
         Asset.changeset(
           %Asset{},
           asset_attrs(%{
-            filename: "notes.txt",
+            filename: "#{unique("notes")}.txt",
             byte_size: 12,
             variant: "original",
             content_hash: String.duplicate("a", 64)
@@ -60,38 +60,41 @@ defmodule Echo.Storage.AssetsTest do
 
   describe "create_asset/1" do
     test "persists file metadata" do
+      filename = "#{unique("hero")}.png"
+
       attrs =
         asset_attrs(%{
-          filename: "hero.png",
+          filename: filename,
           byte_size: 2048,
           width: 800,
           height: 600,
           variant: "content",
-          content_hash: "abc123"
+          content_hash: unique("hash")
         })
 
       assert {:ok, asset} = Assets.create_asset(attrs)
-      assert asset.filename == "hero.png"
+      assert asset.filename == filename
       assert asset.byte_size == 2048
       assert asset.width == 800
       assert asset.height == 600
       assert asset.variant == "content"
-      assert asset.content_hash == "abc123"
+      assert asset.content_hash == attrs.content_hash
     end
   end
 
   describe "upload_asset/4" do
     test "records filename, size, and content hash for a non-image" do
-      body = "hello world"
-      path = "docs/readme-#{System.unique_integer([:positive])}.txt"
+      body = unique("body")
+      path = "#{unique("docs")}.txt"
+      filename = "#{unique("readme")}.txt"
 
       assert {:ok, [asset]} =
                Assets.upload_asset(path, body, "text/plain",
-                 filename: "README.txt",
+                 filename: filename,
                  storage: FakeS3
                )
 
-      assert asset.filename == "README.txt"
+      assert asset.filename == filename
       assert asset.byte_size == byte_size(body)
       assert asset.variant == "original"
       assert asset.width == nil
@@ -104,7 +107,7 @@ defmodule Echo.Storage.AssetsTest do
     end
 
     test "defaults filename to the path basename" do
-      path = "docs/notes-#{System.unique_integer([:positive])}.txt"
+      path = "#{unique("docs")}.txt"
 
       assert {:ok, [asset]} =
                Assets.upload_asset(path, "hi", "text/plain", storage: FakeS3)
@@ -114,18 +117,19 @@ defmodule Echo.Storage.AssetsTest do
 
     test "stores four image variants with shared filename and per-file dimensions" do
       body = png_bytes(64, 32)
-      path = "photos/cat-#{System.unique_integer([:positive])}.png"
+      filename = "#{unique("cat")}.png"
+      path = "#{unique("photos")}.png"
 
       assert {:ok, assets} =
                Assets.upload_asset(path, body, "image/png",
-                 filename: "cat.png",
+                 filename: filename,
                  storage: FakeS3
                )
 
       by_variant = Map.new(assets, &{&1.variant, &1})
 
       assert map_size(by_variant) == 4
-      assert Enum.all?(assets, &(&1.filename == "cat.png"))
+      assert Enum.all?(assets, &(&1.filename == filename))
 
       original = by_variant["original"]
       assert original.width == 64

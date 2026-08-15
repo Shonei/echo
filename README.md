@@ -6,12 +6,13 @@ Echo is a Phoenix application featuring Chat, Request Echoing, and Audit Logging
 
 To start your Phoenix server:
 
-1.  **Start Postgres** (any instance will do):
+1.  **Start Postgres** and set `POSTGRES_URL` (host, user, password, port, and
+    database name in one value). Tests rewrite the database name to `echo_test`
+    so they never touch your dev data.
+
     ```bash
-    docker run -d --name echo-pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
+    export POSTGRES_URL=postgres://postgres:postgres@localhost:5432/echo_dev
     ```
-    Connection details default to `postgres:postgres@localhost:5432` and can be
-    overridden with `PGUSER`, `PGPASSWORD`, `PGHOST` and `PGPORT`.
 
 2.  **Install dependencies and create the database**:
     ```bash

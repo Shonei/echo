@@ -257,7 +257,8 @@ defmodule Echo.Storage.S3Client do
 
   # AWS Signature V4 Implementation
 
-  defp sign_request(state, method, path, payload, extra_headers, query \\ "") do
+  @doc false
+  def sign_request(state, method, path, payload, extra_headers, query \\ "") do
     now = DateTime.utc_now()
     amz_date = format_amz_date(now)
     date_stamp = format_date_stamp(now)

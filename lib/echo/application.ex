@@ -19,23 +19,24 @@ defmodule Echo.Application do
          repos: Application.fetch_env!(:echo, :ecto_repos), skip: skip_migrations?()},
         {DNSCluster, query: Application.get_env(:echo, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Echo.PubSub},
-        Echo.RequestCache,
-        # Cleanup job for old HTTP requests
-        Echo.Requests.RequestCleanupJob,
-        # Rate limiting ETS table owner
-        EchoWeb.Plugs.RateLimit.TableOwner,
-        # Auth User GenServer
-        Echo.AuthUser,
-        # Gemini API GenServer
-        Echo.Agents.API,
-        # AI Conversation Manager Processes (Dynamic)
-        {Registry, keys: :unique, name: Echo.Agents.ConversationRegistry},
-        {DynamicSupervisor, strategy: :one_for_one, name: Echo.Agents.ConversationSupervisor},
-        # HTTP client
-        {Finch, name: Echo.Finch},
-        # Start to serve requests, typically the last entry
-        EchoWeb.Endpoint
-      ] ++ axiom_logger_child()
+        Echo.RequestCache
+      ] ++
+        request_cleanup_job() ++
+        [
+          # Rate limiting ETS table owner
+          EchoWeb.Plugs.RateLimit.TableOwner,
+          # Auth User GenServer
+          Echo.AuthUser,
+          # Gemini API GenServer
+          Echo.Agents.API,
+          # AI Conversation Manager Processes (Dynamic)
+          {Registry, keys: :unique, name: Echo.Agents.ConversationRegistry},
+          {DynamicSupervisor, strategy: :one_for_one, name: Echo.Agents.ConversationSupervisor},
+          # HTTP client
+          {Finch, name: Echo.Finch},
+          # Start to serve requests, typically the last entry
+          EchoWeb.Endpoint
+        ] ++ axiom_logger_child()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -54,6 +55,14 @@ defmodule Echo.Application do
   defp skip_migrations?() do
     # Releases run migrations through Echo.Migrator instead of at boot
     System.get_env("RELEASE_NAME") != nil
+  end
+
+  defp request_cleanup_job do
+    if Application.get_env(:echo, :request_cleanup_enabled, true) do
+      [Echo.Requests.RequestCleanupJob]
+    else
+      []
+    end
   end
 
   defp axiom_logger_child do

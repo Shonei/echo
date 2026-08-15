@@ -7,8 +7,8 @@ defmodule EchoWeb.BlogControllerTest do
     {:ok, blog} =
       attrs
       |> Enum.into(%{
-        title: "A post",
-        slug: "a-post-#{System.unique_integer([:positive])}",
+        title: unique("post"),
+        slug: unique("post"),
         status: "draft",
         content: "body"
       })
@@ -35,8 +35,9 @@ defmodule EchoWeb.BlogControllerTest do
     test "anonymous callers cannot opt into drafts via the status param", %{conn: conn} do
       draft = blog_fixture(%{status: "draft"})
 
+      # Anonymous index always filters to public, so leftover public rows may
+      # appear; the draft we just created must not.
       refute draft.slug in slugs(get(conn, "/api/v1/blogs?status=draft"))
-      assert slugs(get(conn, "/api/v1/blogs?status=draft")) == []
     end
 
     test "authenticated callers see every status", %{conn: conn} do
@@ -91,8 +92,10 @@ defmodule EchoWeb.BlogControllerTest do
     end
 
     test "an all-digit slug is reachable", %{conn: conn} do
-      blog = blog_fixture(%{slug: "2026", status: "public"})
-      assert json_response(get(conn, "/api/v1/blogs/2026"), 200)["data"]["id"] == blog.id
+      slug = unique_digits()
+      blog = blog_fixture(%{slug: slug, status: "public"})
+
+      assert json_response(get(conn, "/api/v1/blogs/#{slug}"), 200)["data"]["id"] == blog.id
     end
   end
 
@@ -169,8 +172,8 @@ defmodule EchoWeb.BlogControllerTest do
         authenticate(conn)
         |> post("/api/v1/blogs", %{
           "blog" => %{
-            "title" => "T",
-            "slug" => "tagged-#{System.unique_integer([:positive])}",
+            "title" => unique("post"),
+            "slug" => unique("tagged"),
             "tags" => %{"lang" => "elixir"}
           }
         })
@@ -184,13 +187,19 @@ defmodule EchoWeb.BlogControllerTest do
     end
 
     test "create rejects a non-map instead of silently storing it", %{conn: conn} do
+      slug = unique("bad-tags")
+
       conn =
         post(authenticate(conn), "/api/v1/blogs", %{
-          "blog" => %{"title" => "T", "slug" => "bad-tags", "tags" => "tech,elixir"}
+          "blog" => %{
+            "title" => unique("post"),
+            "slug" => slug,
+            "tags" => "tech,elixir"
+          }
         })
 
       assert json_response(conn, 422)["errors"]["tags"]
-      assert Content.list_blogs() |> Enum.all?(&(&1.slug != "bad-tags"))
+      assert Content.list_blogs() |> Enum.all?(&(&1.slug != slug))
     end
 
     test "update rejects a non-map", %{conn: conn} do
@@ -233,7 +242,7 @@ defmodule EchoWeb.BlogControllerTest do
     test "an unroutable slug returns 422 on create", %{conn: conn} do
       conn =
         post(authenticate(conn), "/api/v1/blogs", %{
-          "blog" => %{"title" => "T", "slug" => "Not A Slug"}
+          "blog" => %{"title" => unique("post"), "slug" => "Not A Slug"}
         })
 
       assert json_response(conn, 422)["errors"]["slug"]

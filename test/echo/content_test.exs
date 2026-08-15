@@ -8,8 +8,8 @@ defmodule Echo.ContentTest do
     {:ok, blog} =
       attrs
       |> Enum.into(%{
-        title: "A post",
-        slug: "a-post-#{System.unique_integer([:positive])}",
+        title: unique("post"),
+        slug: unique("post"),
         status: "draft",
         content: "first draft"
       })
@@ -114,12 +114,15 @@ defmodule Echo.ContentTest do
     end
 
     test "falls back to the slug when a numeric identifier is not an id" do
-      blog = blog_fixture(slug: "2026")
-      assert Content.get_blog_by_id_or_slug!("2026").id == blog.id
+      slug = unique_digits()
+      blog = blog_fixture(slug: slug)
+      assert Content.get_blog_by_id_or_slug!(slug).id == blog.id
     end
 
     test "raises when nothing matches" do
-      assert_raise Ecto.NoResultsError, fn -> Content.get_blog_by_id_or_slug!("nope") end
+      assert_raise Ecto.NoResultsError, fn ->
+        Content.get_blog_by_id_or_slug!(unique("missing"))
+      end
     end
   end
 
@@ -127,14 +130,15 @@ defmodule Echo.ContentTest do
     test "rejects slugs that could not be routed" do
       for slug <- ["A Post", "a post", "a/b", "trailing-", "Ünïcode"] do
         assert {:error, changeset} =
-                 Content.create_blog(%{title: "T", slug: slug, status: "draft"})
+                 Content.create_blog(%{title: unique("post"), slug: slug, status: "draft"})
 
         assert %{slug: ["must be lowercase letters, numbers and dashes"]} = errors_on(changeset)
       end
     end
 
     test "accepts lowercase dashed slugs" do
-      assert {:ok, _} = Content.create_blog(%{title: "T", slug: "a-good-slug-2", status: "draft"})
+      slug = unique("a-good-slug")
+      assert {:ok, _} = Content.create_blog(%{title: unique("post"), slug: slug, status: "draft"})
     end
   end
 

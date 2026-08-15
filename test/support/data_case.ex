@@ -1,7 +1,9 @@
 defmodule Echo.DataCase do
   @moduledoc """
-  This module defines the setup for tests requiring
-  access to the application's data layer.
+  Setup for tests that touch the database.
+
+  Tests commit to a long-lived `echo_test` database. Do not assume tables are
+  empty. Seed unique columns (slugs, paths, names) with `unique/1`.
   """
 
   use ExUnit.CaseTemplate
@@ -17,11 +19,16 @@ defmodule Echo.DataCase do
     end
   end
 
-  setup tags do
-    pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Echo.Repo, shared: not tags[:async])
-    on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
-    :ok
+  @doc """
+  A unique seed token, e.g. `"post-13"`. Use this for any column that must not
+  collide with rows left by earlier test runs.
+  """
+  def unique(prefix \\ "seed") when is_binary(prefix) do
+    "#{prefix}-#{System.unique_integer([:positive])}"
   end
+
+  @doc "An all-digit unique string, for slugs that look like ids."
+  def unique_digits, do: Integer.to_string(System.unique_integer([:positive]))
 
   @doc """
   A helper that transforms changeset errors into a map of messages.

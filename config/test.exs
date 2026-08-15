@@ -1,18 +1,12 @@
 import Config
 
-# Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
-config :echo, Echo.Repo,
-  username: System.get_env("PGUSER") || "postgres",
-  password: System.get_env("PGPASSWORD") || "postgres",
-  hostname: System.get_env("PGHOST") || "localhost",
-  port: String.to_integer(System.get_env("PGPORT") || "5432"),
-  database: "echo_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool_size: System.schedulers_online() * 2,
-  pool: Ecto.Adapters.SQL.Sandbox
+# Database URL comes from POSTGRES_URL in config/runtime.exs.
+# Tests always use the `echo_test` database so they cannot clobber dev data.
+# Writes are committed (no SQL sandbox) so rows accumulate across runs.
+config :echo, Echo.Repo, pool_size: System.schedulers_online() * 2
+
+# RequestCleanupJob would delete old echo requests; keep them for index/query work.
+config :echo, :request_cleanup_enabled, false
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
