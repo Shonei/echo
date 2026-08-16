@@ -6,6 +6,7 @@ defmodule EchoWeb.AgentChatController do
 
   @models [
     {"Gemini 3.1 Pro Preview", "gemini-3.1-pro-preview"},
+    {"Gemini 3.7 Flash", "gemini-3.7-flash"},
     {"Gemini 3 Pro Image Preview", "gemini-3-pro-image-preview"},
     {"Gemini 2.5 Pro", "gemini-2.5-pro"},
     {"Gemini 2.5 Flash", "gemini-2.5-flash"}

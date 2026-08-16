@@ -20,7 +20,7 @@ defmodule Echo.Agents.API do
   @doc """
   Calls the Gemini API generateContent endpoint.
 
-  `model` should be a model name like "gemini-2.0-flash"
+  `model` should be a model name like "gemini-3.7-flash"
   `contents` should be a list of maps matching the Content schema:
     [%{role: "user", parts: [%{text: "..."}]}]
   """

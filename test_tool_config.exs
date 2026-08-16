@@ -23,7 +23,7 @@ payload1 = %{
 
 # The actual API expects camelCase. Let's see if we can just test raw json payload.
 api_key = Application.get_env(:echo, Echo.Agents.API) |> Keyword.get(:api_key)
-url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent"
+url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent"
 headers = [{"Content-Type", "application/json"}, {"x-goog-api-key", api_key}]
 
 # Test 1: Just tools

@@ -21,7 +21,7 @@ To support agents and reusable tools, we will introduce the following records:
    - `name`: String
    - `description`: Text
    - `system_prompt`: Text
-   - `model_version`: String (e.g., `gemini-1.5-pro-latest`)
+   - `model_version`: String (e.g., `gemini-3.7-flash`)
    - `created_at` / `updated_at`
 
 2. **`Tool`**

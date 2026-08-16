@@ -64,8 +64,8 @@ AI Assistant: Phoenix LiveView is a library that enables rich, interactive web a
 
 ### API Integration
 
-- Uses Google Gemini Flash 2.5 model (`gemini-2.0-flash-exp`)
-- API endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent`
+- Uses Google Gemini Flash 3.7 model (`gemini-3.7-flash`)
+- API endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent`
 - Configured with temperature: 0.7 and max output tokens: 500
 
 ### Error Handling

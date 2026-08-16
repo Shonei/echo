@@ -36,7 +36,7 @@ defmodule EchoWeb.AgentChatControllerTest do
     test "wires the selected options into the conversation", %{conn: conn} do
       params = %{
         "agent" => %{
-          "model" => "gemini-2.5-flash",
+          "model" => "gemini-3.7-flash",
           "temperature" => "0.2",
           "max_output_tokens" => "2048",
           "thinking_enabled" => "true",
@@ -49,7 +49,7 @@ defmodule EchoWeb.AgentChatControllerTest do
       conn = post(conn, ~p"/agent-chat", params)
       state = conversation_state(conn)
 
-      assert state.model == "gemini-2.5-flash"
+      assert state.model == "gemini-3.7-flash"
       assert state.temperature == 0.2
       assert state.max_output_tokens == 2048
       assert state.thinking_enabled
@@ -67,7 +67,7 @@ defmodule EchoWeb.AgentChatControllerTest do
     test "leaves optional settings unset when the form is left empty", %{conn: conn} do
       params = %{
         "agent" => %{
-          "model" => "gemini-2.5-flash",
+          "model" => "gemini-3.7-flash",
           "temperature" => "0.7",
           "max_output_tokens" => "",
           "thinking_budget" => "",
