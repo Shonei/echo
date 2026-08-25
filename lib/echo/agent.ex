@@ -39,9 +39,7 @@ defmodule Echo.Agent do
 
   """
   def list_messages_by_session(session_id) do
-    Repo.all(
-      from m in Message, where: m.session_id == ^session_id, order_by: [asc: m.id]
-    )
+    Repo.all(from m in Message, where: m.session_id == ^session_id, order_by: [asc: m.id])
   end
 
   @doc """
@@ -153,7 +151,8 @@ defmodule Echo.Agent do
       "thinking_budget" => opt(opts, :thinking_budget, "thinking_budget"),
       "tools" => opt(opts, :tools, "tools"),
       "model" => opt(opts, :model, "model"),
-      "response_modalities" => opt(opts, :response_modalities, "response_modalities")
+      "response_modalities" => opt(opts, :response_modalities, "response_modalities"),
+      "provider" => opt(opts, :provider, "provider")
     }
 
     Repo.transaction(fn ->

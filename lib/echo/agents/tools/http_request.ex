@@ -24,7 +24,11 @@ defmodule Echo.Agents.Tools.HttpRequest do
                       proxy-authorization proxy-authenticate te trailer)
 
   @doc """
-  Gemini function declaration for this tool.
+  Canonical function declaration for this tool.
+
+  Standard, lowercase-typed JSON Schema — each provider rewrites it into its
+  own dialect via `Echo.Agents.Provider.build_function_tools/1` (Gemini wants
+  the types upper-cased, OpenRouter takes them as they are).
   """
   def declaration do
     %{
@@ -34,24 +38,24 @@ defmodule Echo.Agents.Tools.HttpRequest do
           "Use it to call public APIs or fetch a page's raw content. Requests to private, " <>
           "internal, or loopback addresses are refused. Large bodies are truncated.",
       "parameters" => %{
-        "type" => "OBJECT",
+        "type" => "object",
         "properties" => %{
           "url" => %{
-            "type" => "STRING",
+            "type" => "string",
             "description" => "The absolute http:// or https:// URL to request."
           },
           "method" => %{
-            "type" => "STRING",
+            "type" => "string",
             "description" => "HTTP method. Defaults to GET.",
             "enum" => @allowed_methods
           },
           "headers" => %{
-            "type" => "OBJECT",
+            "type" => "object",
             "description" =>
               "Optional request headers as a flat object of string values, e.g. {\"Accept\": \"application/json\"}."
           },
           "body" => %{
-            "type" => "STRING",
+            "type" => "string",
             "description" =>
               "Optional request body, already serialised. Set a matching Content-Type header."
           }

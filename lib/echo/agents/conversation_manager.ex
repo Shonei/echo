@@ -12,6 +12,7 @@ defmodule Echo.Agents.Conversation do
             backend_tools: [],
             model: nil,
             response_modalities: nil,
+            provider: nil,
             messages: []
 end
 
@@ -56,7 +57,10 @@ defmodule Echo.Agents.ConversationManager do
   end
 
   defp start_child(id) do
-    DynamicSupervisor.start_child(Echo.Agents.ConversationSupervisor, {ConversationServer, %{id: id}})
+    DynamicSupervisor.start_child(
+      Echo.Agents.ConversationSupervisor,
+      {ConversationServer, %{id: id}}
+    )
   end
 
   @doc """

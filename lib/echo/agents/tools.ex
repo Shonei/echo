@@ -21,8 +21,11 @@ defmodule Echo.Agents.Tools do
   @doc """
   Builds the `tools` entry for the given tool names, ready to merge into the
   conversation opts. Returns `nil` when none of the names are known.
+
+  Declarations are written once in canonical JSON Schema; the provider wraps
+  them in its own tool syntax, so the same tool works on any backend.
   """
-  def tool_config(names) when is_list(names) do
+  def tool_config(names, provider \\ Echo.Agents.Providers.Gemini) when is_list(names) do
     declarations =
       names
       |> Enum.filter(&Map.has_key?(@backends, &1))
@@ -30,7 +33,7 @@ defmodule Echo.Agents.Tools do
 
     case declarations do
       [] -> nil
-      list -> %{"functionDeclarations" => list}
+      list -> provider.build_function_tools(list)
     end
   end
 
@@ -44,8 +47,15 @@ defmodule Echo.Agents.Tools do
   def enabled(tools) when is_list(tools) do
     tools
     |> Enum.flat_map(fn
+      # Gemini nests declarations; OpenRouter lists them flat. OpenRouter's own
+      # server-side tools (`openrouter:web_search`) carry no `"function"` key,
+      # so they never match here — which is right: OpenRouter resolves them
+      # itself and they must not enter Echo's tool loop.
       %{"functionDeclarations" => declarations} when is_list(declarations) ->
         Enum.map(declarations, &Map.get(&1, "name"))
+
+      %{"type" => "function", "function" => %{"name" => name}} ->
+        [name]
 
       _ ->
         []
@@ -74,16 +84,21 @@ defmodule Echo.Agents.Tools do
 
   @doc """
   Runs one call and wraps the result as a `functionResponse` part.
+
+  A call's `"id"`, when it has one, is carried onto the response: OpenRouter
+  pairs a result with its call by id rather than by name, and drops the turn
+  if it can't find the match.
   """
   def run(%{"name" => name} = call) do
     args = Map.get(call, "args") || %{}
     result = Map.fetch!(@backends, name).run(args)
 
-    %{
-      "functionResponse" => %{
-        "name" => name,
-        "response" => result
-      }
-    }
+    response =
+      case Map.get(call, "id") do
+        nil -> %{"name" => name, "response" => result}
+        id -> %{"name" => name, "response" => result, "id" => id}
+      end
+
+    %{"functionResponse" => response}
   end
 end

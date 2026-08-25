@@ -12,37 +12,57 @@ defmodule EchoWeb.AgentChatController do
     {"Gemini 2.5 Flash", "gemini-2.5-flash"}
   ]
 
+  @providers [
+    {"Gemini", "gemini"},
+    {"OpenRouter", "openrouter"}
+  ]
+
   def new(conn, _params) do
-    render(conn, :new, models: @models)
+    render(conn, :new, models: @models, providers: @providers)
   end
 
   def create(conn, %{"agent" => agent_params}) do
-    opts =
-      %{
-        "system_prompt" => presence(agent_params["system_prompt"]),
-        "model" => presence(agent_params["model"]),
-        "temperature" => parse_float(agent_params["temperature"]),
-        "max_output_tokens" => parse_integer(agent_params["max_output_tokens"]),
-        "thinking_enabled" => checked?(agent_params["thinking_enabled"]),
-        "thinking_budget" => parse_integer(agent_params["thinking_budget"]),
-        "response_modalities" => modalities(agent_params["response_modalities"]),
-        "tools" => tools(agent_params["tools"])
-      }
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
+    provider = presence(agent_params["provider"]) || "gemini"
 
-    case ConversationManager.start_conversation(opts) do
-      {:ok, conversation_id} ->
-        conn
-        |> put_flash(:info, "Agent initialized successfully.")
-        |> redirect(to: ~p"/agent-chat/#{conversation_id}")
-
+    with {:ok, provider_module} <- Echo.Agents.Providers.resolve(provider),
+         {:ok, raw_tools} <- parse_raw_tools(agent_params["openrouter_tools"]),
+         opts = build_opts(agent_params, provider, provider_module, raw_tools),
+         {:ok, conversation_id} <- ConversationManager.start_conversation(opts) do
+      conn
+      |> put_flash(:info, "Agent initialized successfully.")
+      |> redirect(to: ~p"/agent-chat/#{conversation_id}")
+    else
       {:error, reason} ->
         conn
-        |> put_flash(:error, "Failed to start conversation: #{inspect(reason)}")
-        |> render(:new, models: @models)
+        |> put_flash(:error, "Failed to start conversation: #{describe(reason)}")
+        |> render(:new, models: @models, providers: @providers)
     end
   end
+
+  defp build_opts(params, provider, provider_module, raw_tools) do
+    %{
+      "provider" => provider,
+      "system_prompt" => presence(params["system_prompt"]),
+      "model" => model(params, provider),
+      "temperature" => parse_float(params["temperature"]),
+      "max_output_tokens" => parse_integer(params["max_output_tokens"]),
+      "thinking_enabled" => checked?(params["thinking_enabled"]),
+      "thinking_budget" => parse_integer(params["thinking_budget"]),
+      "response_modalities" => modalities(params["response_modalities"]),
+      "tools" => tools(params, provider, provider_module, raw_tools)
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  # OpenRouter's catalogue is far too large for a select, and it has no default
+  # model of its own, so that provider gets a free-text slug instead.
+  defp model(params, "openrouter"), do: presence(params["openrouter_model"])
+  defp model(params, _provider), do: presence(params["model"])
+
+  defp describe({:unknown_provider, name}), do: "unknown provider #{inspect(name)}"
+  defp describe({:invalid_tools_json, message}), do: "tools JSON is invalid: #{message}"
+  defp describe(reason), do: inspect(reason)
 
   def show(conn, %{"id" => id}) do
     messages = AgentDB.list_messages_by_session(id)
@@ -126,25 +146,59 @@ defmodule EchoWeb.AgentChatController do
   defp modalities(list) when is_list(list), do: Enum.map(list, &String.upcase/1)
   defp modalities(_), do: ["TEXT"]
 
-  # Gemini's own tools are declared as empty objects; Echo's are function
-  # declarations that `Echo.Agents.ConversationServer` executes itself.
-  defp tools(params) when is_map(params) do
-    builtins =
-      ["google_search", "url_context"]
-      |> Enum.filter(&checked?(params[&1]))
-      |> Enum.map(&%{&1 => %{}})
-
-    backends =
-      Echo.Agents.Tools.names()
-      |> Enum.filter(&checked?(params[&1]))
-      |> Echo.Agents.Tools.tool_config()
-      |> List.wrap()
-
-    case builtins ++ backends do
+  # OpenRouter's server-side tools have no fixed set to tick, and their syntax
+  # is its own, so they're pasted in raw -- the same way Gemini's built-ins are
+  # accepted as raw Gemini syntax below.
+  defp tools(params, "openrouter", provider_module, raw_tools) do
+    case raw_tools ++ backend_tools(params["tools"], provider_module) do
       [] -> nil
       list -> list
     end
   end
 
-  defp tools(_), do: nil
+  # Gemini's own tools are declared as empty objects; Echo's are function
+  # declarations that `Echo.Agents.ConversationServer` executes itself.
+  defp tools(params, _provider, provider_module, _raw_tools) do
+    tool_params = params["tools"]
+
+    builtins =
+      if is_map(tool_params) do
+        ["google_search", "url_context"]
+        |> Enum.filter(&checked?(tool_params[&1]))
+        |> Enum.map(&%{&1 => %{}})
+      else
+        []
+      end
+
+    case builtins ++ backend_tools(tool_params, provider_module) do
+      [] -> nil
+      list -> list
+    end
+  end
+
+  defp backend_tools(tool_params, provider_module) when is_map(tool_params) do
+    Echo.Agents.Tools.names()
+    |> Enum.filter(&checked?(tool_params[&1]))
+    |> Echo.Agents.Tools.tool_config(provider_module)
+    |> List.wrap()
+  end
+
+  defp backend_tools(_tool_params, _provider_module), do: []
+
+  defp parse_raw_tools(value) when is_binary(value) do
+    case String.trim(value) do
+      "" ->
+        {:ok, []}
+
+      trimmed ->
+        case Jason.decode(trimmed) do
+          {:ok, list} when is_list(list) -> {:ok, list}
+          {:ok, map} when is_map(map) -> {:ok, [map]}
+          {:ok, _} -> {:error, {:invalid_tools_json, "expected an object or an array of objects"}}
+          {:error, error} -> {:error, {:invalid_tools_json, Exception.message(error)}}
+        end
+    end
+  end
+
+  defp parse_raw_tools(_value), do: {:ok, []}
 end

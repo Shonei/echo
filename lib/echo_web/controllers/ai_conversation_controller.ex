@@ -15,7 +15,8 @@ defmodule EchoWeb.AIConversationController do
         "thinking_budget",
         "tools",
         "response_modalities",
-        "model"
+        "model",
+        "provider"
       ])
 
     case ConversationManager.start_conversation(opts) do

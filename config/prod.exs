@@ -39,7 +39,7 @@ config :echo, Echo.Storage.S3Client,
   bucket: System.get_env("S3_BUCKET"),
   access_key_id: System.get_env("S3_ACCESS_KEY_ID")
 
-config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview"
+config :echo, Echo.Agents.Providers.Gemini, model: "gemini-3.1-pro-preview"
 
 config :cors_plug,
   origin: [~r/^https:\/\/(.*\.)?shonei\.(me|dev)$/E],

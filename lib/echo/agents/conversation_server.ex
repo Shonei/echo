@@ -57,21 +57,31 @@ defmodule Echo.Agents.ConversationServer do
         {:stop, :conversation_not_found}
 
       record ->
-        convo = %Conversation{
-          id: id,
-          system_prompt: record.system_prompt,
-          temperature: record.temperature || 0.7,
-          max_output_tokens: record.max_output_tokens,
-          thinking_enabled: record.thinking_enabled || false,
-          thinking_budget: record.thinking_budget,
-          tools: record.tools,
-          model: record.model,
-          response_modalities: record.response_modalities,
-          messages: id |> Echo.Agent.list_messages_by_session() |> replay_into_turns()
-        }
+        # The provider is read from the record, not from `opts`, for the same
+        # reason as everything else here: a provider held only in memory would
+        # quietly revert to the default the first time this process was rebuilt.
+        case Echo.Agents.Providers.resolve(record.provider) do
+          {:ok, provider} ->
+            convo = %Conversation{
+              id: id,
+              system_prompt: record.system_prompt,
+              temperature: record.temperature || 0.7,
+              max_output_tokens: record.max_output_tokens,
+              thinking_enabled: record.thinking_enabled || false,
+              thinking_budget: record.thinking_budget,
+              tools: record.tools,
+              model: record.model,
+              response_modalities: record.response_modalities,
+              provider: provider,
+              messages: id |> Echo.Agent.list_messages_by_session() |> replay_into_turns()
+            }
 
-        # Only tools this conversation actually declared may be run server-side.
-        {:ok, %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}}
+            # Only tools this conversation actually declared may be run server-side.
+            {:ok, %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}}
+
+          {:error, reason} ->
+            {:stop, reason}
+        end
     end
   end
 
@@ -123,38 +133,36 @@ defmodule Echo.Agents.ConversationServer do
     end
   end
 
-  # Calls Gemini, and if it asked for a tool Echo owns, runs the tool and calls
-  # again with the result. Client-side tools (the blog editor's `edit_text`, for
-  # instance) are not in the registry, so they simply come back to the caller.
+  # Calls the conversation's provider, and if it asked for a tool Echo owns,
+  # runs the tool and calls again with the result. Client-side tools (the blog
+  # editor's `edit_text`, for instance) are not in the registry, so they simply
+  # come back to the caller.
   #
-  # Every turn is persisted before the next Gemini call is made. On failure,
+  # Every turn is persisted before the next model call is made. On failure,
   # returns `{:error, reason, messages}` where `messages` reflects exactly
   # what was durably persisted so far -- never a turn that failed to persist,
   # and never missing a turn that succeeded -- so the caller can always set
   # its in-memory state to match Postgres, whether this call ultimately
   # succeeded or not.
+  #
+  # The provider hands back canonical parts already extracted from its own
+  # wire format, so nothing below this line knows which backend answered.
   defp run_turn(messages, api_opts, convo, acc_parts, depth) do
-    case Echo.Agents.API.generate_content(messages, api_opts) do
-      {:ok, response} ->
-        case extract_parts(response) do
-          {:ok, ai_parts, metadata} ->
-            model_messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
+    case convo.provider.generate_content(messages, api_opts) do
+      {:ok, %{parts: ai_parts, metadata: metadata}} ->
+        model_messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
 
-            case store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
-              :ok ->
-                continue_turn(
-                  model_messages,
-                  ai_parts,
-                  api_opts,
-                  convo,
-                  acc_parts ++ ai_parts,
-                  metadata,
-                  depth
-                )
-
-              {:error, reason} ->
-                {:error, reason, messages}
-            end
+        case store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
+          :ok ->
+            continue_turn(
+              model_messages,
+              ai_parts,
+              api_opts,
+              convo,
+              acc_parts ++ ai_parts,
+              metadata,
+              depth
+            )
 
           {:error, reason} ->
             {:error, reason, messages}
@@ -197,42 +205,6 @@ defmodule Echo.Agents.ConversationServer do
   end
 
   # --- Internal Helpers ---
-
-  defp extract_parts(%{
-         "candidates" => [%{"content" => %{"parts" => parts}} = candidate | _]
-       }) do
-    grounding = Map.get(candidate, "groundingMetadata")
-
-    url_context =
-      Map.get(candidate, "urlContextMetadata") || Map.get(candidate, "url_context_metadata")
-
-    metadata = %{}
-    metadata = if grounding, do: Map.put(metadata, "groundingMetadata", grounding), else: metadata
-
-    metadata =
-      if url_context, do: Map.put(metadata, "urlContextMetadata", url_context), else: metadata
-
-    {:ok, parts, metadata}
-  end
-
-  defp extract_parts(%{
-         "candidates" => [%{"finishReason" => reason, "finishMessage" => message} | _]
-       }) do
-    Logger.error("Gemini API returned finish reason: #{reason} with message: #{message}")
-    {:error, {:gemini_error, reason, message}}
-  end
-
-  defp extract_parts(%{
-         "candidates" => [%{"finishReason" => reason} | _]
-       }) do
-    Logger.error("Gemini API returned finish reason: #{reason}")
-    {:error, {:gemini_error, reason}}
-  end
-
-  defp extract_parts(response) do
-    Logger.error("Failed to extract parts from Gemini response: #{inspect(response)}")
-    {:error, :unexpected_response_format}
-  end
 
   # Written synchronously, before the caller ever sees a reply: a resumed
   # conversation is only as trustworthy as what's actually landed in
@@ -281,7 +253,10 @@ defmodule Echo.Agents.ConversationServer do
   defp row_to_part(%{type: "unknown", payload: part}), do: part
 
   defp row_to_part(row) do
-    Logger.warning("Unrecognized stored message type while replaying history: #{inspect(row.type)}")
+    Logger.warning(
+      "Unrecognized stored message type while replaying history: #{inspect(row.type)}"
+    )
+
     %{"text" => row.content || ""}
   end
 

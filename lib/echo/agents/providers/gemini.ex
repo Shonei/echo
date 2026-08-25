@@ -1,12 +1,15 @@
-defmodule Echo.Agents.API do
+defmodule Echo.Agents.Providers.Gemini do
   @moduledoc """
   A plain client for the Gemini API. Holds no process and no state: every call
   reads config fresh and makes its own request on the caller's process, so
   concurrent callers (one `Echo.Agents.ConversationServer` per conversation)
   run in parallel instead of queueing behind a single shared process.
 
-  Maps Elixir structs and maps to the Gemini REST API JSON shapes.
+  Maps Echo's canonical parts (see `Echo.Agents.Provider`) to and from the
+  Gemini REST API JSON shapes.
   """
+  @behaviour Echo.Agents.Provider
+
   require Logger
 
   defstruct [:api_key, :http_client, :model, :log_debug_body]
@@ -14,12 +17,13 @@ defmodule Echo.Agents.API do
   # --- Client API ---
 
   @doc """
-  Calls the Gemini API generateContent endpoint.
+  Calls the Gemini API generateContent endpoint and returns canonical parts.
 
   `model` should be a model name like "gemini-3.7-flash"
-  `contents` should be a list of maps matching the Content schema:
-    [%{role: "user", parts: [%{text: "..."}]}]
+  `contents` should be a list of canonical turns:
+    [%{"role" => "user", "parts" => [%{"text" => "..."}]}]
   """
+  @impl true
   def generate_content(contents, opts \\ [], timeout \\ 300_000) do
     config = get_config()
 
@@ -51,7 +55,7 @@ defmodule Echo.Agents.API do
            ) do
         {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
           case Jason.decode(resp_body) do
-            {:ok, decoded} -> {:ok, decoded}
+            {:ok, decoded} -> extract_parts(decoded)
             {:error, reason} -> {:error, {:json_decode_error, reason, resp_body}}
           end
 
@@ -117,6 +121,73 @@ defmodule Echo.Agents.API do
     }
   end
 
+  # --- Tool declarations ---
+
+  @doc """
+  Wraps canonical tool declarations as Gemini function declarations.
+
+  Gemini's schema dialect spells JSON Schema types in upper case (`"OBJECT"`,
+  not `"object"`), so the whole `parameters` tree is walked and rewritten.
+  """
+  @impl true
+  def build_function_tools(declarations) when is_list(declarations) do
+    %{"functionDeclarations" => Enum.map(declarations, &upcase_parameters/1)}
+  end
+
+  defp upcase_parameters(%{"parameters" => parameters} = declaration) do
+    Map.put(declaration, "parameters", upcase_types(parameters))
+  end
+
+  defp upcase_parameters(declaration), do: declaration
+
+  defp upcase_types(%{} = schema) do
+    Map.new(schema, fn
+      {"type", value} when is_binary(value) -> {"type", String.upcase(value)}
+      {key, value} -> {key, upcase_types(value)}
+    end)
+  end
+
+  defp upcase_types(list) when is_list(list), do: Enum.map(list, &upcase_types/1)
+  defp upcase_types(other), do: other
+
+  # --- Response parsing ---
+
+  defp extract_parts(%{
+         "candidates" => [%{"content" => %{"parts" => parts}} = candidate | _]
+       }) do
+    grounding = Map.get(candidate, "groundingMetadata")
+
+    url_context =
+      Map.get(candidate, "urlContextMetadata") || Map.get(candidate, "url_context_metadata")
+
+    metadata = %{}
+    metadata = if grounding, do: Map.put(metadata, "groundingMetadata", grounding), else: metadata
+
+    metadata =
+      if url_context, do: Map.put(metadata, "urlContextMetadata", url_context), else: metadata
+
+    {:ok, %{parts: parts, metadata: metadata}}
+  end
+
+  defp extract_parts(%{
+         "candidates" => [%{"finishReason" => reason, "finishMessage" => message} | _]
+       }) do
+    Logger.error("Gemini API returned finish reason: #{reason} with message: #{message}")
+    {:error, {:gemini_error, reason, message}}
+  end
+
+  defp extract_parts(%{
+         "candidates" => [%{"finishReason" => reason} | _]
+       }) do
+    Logger.error("Gemini API returned finish reason: #{reason}")
+    {:error, {:gemini_error, reason}}
+  end
+
+  defp extract_parts(response) do
+    Logger.error("Failed to extract parts from Gemini response: #{inspect(response)}")
+    {:error, :unexpected_response_format}
+  end
+
   # --- Payload construction ---
 
   @doc """
@@ -151,8 +222,16 @@ defmodule Echo.Agents.API do
 
   # Only support text, functionCall, functionResponse, inlineData for now
   defp format_part(%{"text" => _} = part), do: part
-  defp format_part(%{"functionCall" => _} = part), do: part
-  defp format_part(%{"functionResponse" => _} = part), do: part
+
+  # Canonical parts can carry keys another provider needs and Gemini rejects:
+  # OpenRouter pairs a call with its response by an `"id"` that has no place in
+  # a Gemini request. Take only the keys Gemini's own schema defines.
+  defp format_part(%{"functionCall" => call}),
+    do: %{"functionCall" => Map.take(call, ["name", "args"])}
+
+  defp format_part(%{"functionResponse" => resp}),
+    do: %{"functionResponse" => Map.take(resp, ["name", "response"])}
+
   defp format_part(%{"toolCall" => _} = part), do: part
   defp format_part(%{"toolResponse" => _} = part), do: part
   defp format_part(%{"inlineData" => %{"mimeType" => _, "data" => _}} = part), do: part

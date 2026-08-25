@@ -8,9 +8,13 @@ import Config
 # The block below contains prod specific runtime configuration.
 
 # Configure Gemini API
-config :echo, Echo.Agents.API,
+config :echo, Echo.Agents.Providers.Gemini,
   api_key: System.get_env("GEMINI_API_KEY"),
   model: System.get_env("GEMINI_MODEL") || "gemini-3.1-pro-preview"
+
+# OpenRouter fronts hundreds of models, so there is deliberately no default
+# one — a conversation on this provider must name its own.
+config :echo, Echo.Agents.Providers.OpenRouter, api_key: System.get_env("OPENROUTER_KEY")
 
 # ## Using releases
 #

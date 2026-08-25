@@ -3,14 +3,18 @@ defmodule Echo.Agents.ConversationResumeTest do
 
   alias Echo.Agents.ConversationManager
 
-  # Force the Gemini call to fail fast and deterministically (`:missing_api_key`)
+  # Force the model call to fail fast and deterministically (`:missing_api_key`)
   # regardless of what's in the ambient environment, so these tests never make
   # a real network call. Resume happens in `ConversationServer.init/1`, which
   # runs before that call, so this doesn't get in the way of what's under test.
   setup do
-    previous = Application.get_env(:echo, Echo.Agents.API, [])
-    Application.put_env(:echo, Echo.Agents.API, Keyword.put(previous, :api_key, nil))
-    on_exit(fn -> Application.put_env(:echo, Echo.Agents.API, previous) end)
+    for provider <- [Echo.Agents.Providers.Gemini, Echo.Agents.Providers.OpenRouter] do
+      previous = Application.get_env(:echo, provider, [])
+      Application.put_env(:echo, provider, Keyword.put(previous, :api_key, nil))
+      on_exit(fn -> Application.put_env(:echo, provider, previous) end)
+    end
+
+    :ok
   end
 
   describe "resuming a conversation whose process is gone" do
@@ -85,6 +89,52 @@ defmodule Echo.Agents.ConversationResumeTest do
              ]
 
       assert length(Echo.Agent.list_messages_by_session(id)) == 2
+    end
+  end
+
+  describe "the conversation's provider" do
+    test "defaults to Gemini when the caller never named one" do
+      {:ok, id} = ConversationManager.start_conversation(%{})
+
+      assert [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+      assert :sys.get_state(pid).provider == Echo.Agents.Providers.Gemini
+    end
+
+    test "survives the process being restarted" do
+      # The whole reason the provider is a column rather than a start-up arg:
+      # `init/1` rebuilds its config from Postgres on every resume, and pushes
+      # to `elixir` wipe the registry on every deploy. A provider held only in
+      # memory would silently revert to Gemini here.
+      {:ok, id} = ConversationManager.start_conversation(%{"provider" => "openrouter"})
+
+      [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+      assert :sys.get_state(pid).provider == Echo.Agents.Providers.OpenRouter
+
+      GenServer.stop(pid, :normal)
+      wait_until_deregistered(id)
+
+      # Resumes, then fails the turn on the missing OpenRouter key -- which is
+      # itself the proof it resumed onto OpenRouter and not the default.
+      assert ConversationManager.message(id, "are you there?") == {:error, :missing_api_key}
+
+      assert [{new_pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+      assert new_pid != pid
+      assert :sys.get_state(new_pid).provider == Echo.Agents.Providers.OpenRouter
+    end
+
+    test "refuses a provider it doesn't know instead of falling back" do
+      assert {:error, {:unknown_provider, "hal9000"}} =
+               ConversationManager.start_conversation(%{"provider" => "hal9000"})
+    end
+
+    test "leaves no durable record behind for a conversation that never started" do
+      # `start_conversation/1` writes the record before starting the process,
+      # so a start that fails in `init/1` has to clean up after itself.
+      before = Echo.Repo.aggregate(Echo.Agent.ConversationRecord, :count)
+
+      assert {:error, _} = ConversationManager.start_conversation(%{"provider" => "hal9000"})
+
+      assert Echo.Repo.aggregate(Echo.Agent.ConversationRecord, :count) == before
     end
   end
 

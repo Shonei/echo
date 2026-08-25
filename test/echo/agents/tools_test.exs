@@ -4,15 +4,30 @@ defmodule Echo.Agents.ToolsTest do
   alias Echo.Agents.Tools
   alias Echo.Agents.Tools.HttpRequest
 
-  describe "tool_config/1" do
-    test "wraps known tools as function declarations" do
+  describe "tool_config/2" do
+    test "wraps known tools as function declarations, defaulting to Gemini" do
       assert %{"functionDeclarations" => [%{"name" => "http_request"}]} =
                Tools.tool_config(["http_request"])
+    end
+
+    test "wraps the same tool in the chosen provider's syntax" do
+      assert [%{"type" => "function", "function" => %{"name" => "http_request"}}] =
+               Tools.tool_config(["http_request"], Echo.Agents.Providers.OpenRouter)
     end
 
     test "ignores names it does not own" do
       assert Tools.tool_config(["google_search"]) == nil
       assert Tools.tool_config([]) == nil
+      assert Tools.tool_config([], Echo.Agents.Providers.OpenRouter) == nil
+    end
+  end
+
+  describe "HttpRequest.declaration/0" do
+    test "is canonical, lowercase-typed JSON Schema" do
+      declaration = HttpRequest.declaration()
+
+      assert declaration["parameters"]["type"] == "object"
+      assert declaration["parameters"]["properties"]["url"]["type"] == "string"
     end
   end
 
@@ -29,6 +44,23 @@ defmodule Echo.Agents.ToolsTest do
     test "returns nothing for client-only or missing tools" do
       assert Tools.enabled([%{"functionDeclarations" => [%{"name" => "edit_text"}]}]) == []
       assert Tools.enabled(nil) == []
+    end
+
+    test "reads OpenRouter's flat declaration shape too" do
+      tools = [
+        %{"type" => "function", "function" => %{"name" => "edit_text"}},
+        %{"type" => "function", "function" => %{"name" => "http_request"}}
+      ]
+
+      assert Tools.enabled(tools) == ["http_request"]
+    end
+
+    test "never picks up OpenRouter's own server-side tools" do
+      # They resolve inside OpenRouter with no client round-trip, so they must
+      # not enter Echo's tool loop -- they carry no "function" key to match on.
+      tools = [%{"type" => "openrouter:web_search"}, %{"type" => "openrouter:web_fetch"}]
+
+      assert Tools.enabled(tools) == []
     end
   end
 
@@ -70,6 +102,19 @@ defmodule Echo.Agents.ToolsTest do
                Tools.run(call)
 
       assert error =~ "http and https"
+    end
+
+    test "carries a call's id onto the response, which OpenRouter pairs on" do
+      call = %{"name" => "http_request", "args" => %{"url" => "file:///etc/passwd"}, "id" => "c1"}
+
+      assert %{"functionResponse" => %{"id" => "c1", "name" => "http_request"}} = Tools.run(call)
+    end
+
+    test "omits the id when the call had none, so Gemini payloads stay clean" do
+      call = %{"name" => "http_request", "args" => %{"url" => "file:///etc/passwd"}}
+
+      assert %{"functionResponse" => response} = Tools.run(call)
+      refute Map.has_key?(response, "id")
     end
   end
 

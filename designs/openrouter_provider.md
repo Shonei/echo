@@ -1,6 +1,6 @@
 # Add OpenRouter as a second model provider (Gemini stays the default)
 
-> **Status: paused.** [`designs/conversation_persistence.md`](./conversation_persistence.md) takes priority — conversations need to survive a process/node restart before it's worth adding a second backend. Resume this once that lands.
+> **Status: implemented.** [`designs/conversation_persistence.md`](./conversation_persistence.md) landed first, as planned, and changed one thing this design had assumed: a conversation's config is now rebuilt from Postgres on every resume, so the provider had to become a **persisted column** rather than a start-up argument. See "Provider dispatch" below for what actually shipped.
 
 ## Context
 
@@ -27,7 +27,7 @@ New resolver, `lib/echo/agents/providers.ex`: `resolve(nil | "gemini" | "openrou
 
 ## Renaming `Echo.Agents.API` → `Echo.Agents.Providers.Gemini`
 
-Purely internal rename (only two call sites: `conversation_server.ex` and `test/echo/agents/api_test.exs`; nothing in `blogs` or over HTTP references the module name) so the two backends are visibly symmetric and `@behaviour Echo.Agents.Provider` is explicit. Move `lib/echo/agents/api.ex` → `lib/echo/agents/providers/gemini.ex`:
+Purely internal rename (three call sites: `conversation_server.ex`, `test/echo/agents/api_test.exs`, and `test/echo/agents/conversation_resume_test.exs`, which pokes the config key; nothing in `blogs` or over HTTP references the module name) so the two backends are visibly symmetric and `@behaviour Echo.Agents.Provider` is explicit. Move `lib/echo/agents/api.ex` → `lib/echo/agents/providers/gemini.ex`:
 - Add `@behaviour Echo.Agents.Provider`.
 - Keep `list_models/1` and the public `build_payload/2` as-is (still pure, still Gemini-specific utility).
 - Move `ConversationServer`'s current `extract_parts/1` (the `candidates[0].content.parts` + grounding/url-context metadata extraction, plus the `finishReason` error branches) in as a private helper called from `generate_content/3` right after JSON decode, so it now returns `{:ok, %{parts:, metadata:}}` per the behaviour.
@@ -42,11 +42,17 @@ Purely internal rename (only two call sites: `conversation_server.ex` and `test/
 - Move/rename `test/echo/agents/api_test.exs` → `test/echo/agents/providers/gemini_test.exs`, update the alias and `API.build_payload` → `Gemini.build_payload` calls only.
 - Update the module reference in `config/runtime.exs`, `config/dev.exs`, `config/prod.exs` (env var names `GEMINI_API_KEY`/`GEMINI_MODEL` stay the same, only the `config :echo, Echo.Agents.API, ...` key becomes `config :echo, Echo.Agents.Providers.Gemini, ...`).
 
-## `Conversation` / `ConversationServer` changes
+## Provider dispatch (`Conversation` / `ConversationServer` / persistence)
 
-- `Conversation` struct gains a `provider` field.
-- `init/1`: resolve `Map.get(opts, :provider) || Map.get(opts, "provider")` via `Echo.Agents.Providers.resolve/1`. On `{:error, reason}`, return `{:stop, reason}`.
-- `run_turn/5`: replace the `Echo.Agents.API.generate_content(...)` call + local `extract_parts/1` dispatch with `convo.provider.generate_content(messages, api_opts)`, matching on `{:ok, %{parts: ai_parts, metadata: metadata}}`. Delete the now-dead private `extract_parts/1`. Everything below is untouched.
+**Correction to the original design.** This section first said `init/1` should read the provider from its `opts`. That was written before conversation persistence landed, and it would have been a silent bug: `init/1` now receives only `:id` and rebuilds everything else from `Echo.Agent.ConversationRecord`, so a provider passed as an opt would read back `nil` on every rehydrate and fall back to Gemini. Because every push to `elixir` deploys to prod and wipes the registry, that is the common path, not an edge case — an OpenRouter conversation would quietly revert to Gemini mid-session.
+
+The provider is therefore durable, like the rest of the config:
+
+- Migration `20260825170000_add_provider_to_ai_conversations` adds a nullable `provider` column. Null means "the default", so every conversation predating providers keeps resolving to Gemini.
+- `ConversationRecord` gains the `provider` field and casts it; `Echo.Agent.create_conversation/2` takes it from `opts` (atom or string key) like every other setting.
+- `Conversation` struct gains a `provider` field, holding the resolved **module**, not the name.
+- `init/1` resolves `record.provider` via `Echo.Agents.Providers.resolve/1`. On `{:error, reason}` it returns `{:stop, reason}`; `start_conversation/1`'s existing rollback then deletes the record it had just written, so a bad provider leaves nothing behind.
+- `run_turn/5`: `Echo.Agents.API.generate_content(...)` + the local `extract_parts/1` become `convo.provider.generate_content(messages, api_opts)`, matching `{:ok, %{parts: ai_parts, metadata: metadata}}`. The now-dead private `extract_parts/1` is deleted. Note the error branch still has to return the 3-tuple `{:error, reason, messages}` that persistence introduced, carrying exactly what was durably stored.
 - `part_to_attrs/1` needs no change: a `functionCall`/`functionResponse` map with an extra `"id"` key still matches its existing clauses and stores the whole map (id included) as `payload`.
 - Highest-risk step — run the full test suite right after this change, before adding anything OpenRouter-specific.
 
@@ -71,17 +77,16 @@ Same house style as `s3_client.ex`/the renamed Gemini module: plain module, no p
 **Response parsing** from `%{"choices" => [%{"message" => message, "finish_reason" => reason}], "usage" => usage}`:
 - `message["content"]` → `%{"text" => content}`.
 - Each `message["tool_calls"]` entry → `%{"functionCall" => %{"name" => .., "args" => Jason.decode!(arguments), "id" => id}}`.
-- `message["annotations"]` → `metadata["annotations"]` verbatim — the audit-preservation requirement, flows straight into the same `metadata` map `async_store_parts/5` already persists.
+- `message["annotations"]` → `metadata["annotations"]` verbatim — the audit-preservation requirement, flows straight into the same `metadata` map `store_parts/5` already persists. (Persistence shipped synchronous, not async as this design originally assumed.)
 - `usage` → `metadata["usage"]` verbatim.
 - Only `{:error, {:openrouter_error, reason}}` when `finish_reason` is unusual **and** nothing was extracted; otherwise return the partial reply.
 
 ## Config
 
 ```elixir
-config :echo, Echo.Agents.Providers.OpenRouter,
-  api_key: System.get_env("OPENROUTER_API_KEY")
+config :echo, Echo.Agents.Providers.OpenRouter, api_key: System.get_env("OPENROUTER_KEY")
 ```
-No default model. Update the three existing `config :echo, Echo.Agents.API, ...` lines to `Echo.Agents.Providers.Gemini`.
+No default model — OpenRouter fronts hundreds, and a missing `opts[:model]` is `{:error, :missing_model}` rather than a guess. Update the three existing `config :echo, Echo.Agents.API, ...` lines to `Echo.Agents.Providers.Gemini`.
 
 ## Controllers / router / dev UI
 
@@ -100,10 +105,15 @@ No Mox or Bypass in `mix.exs`/`mix.lock`, and no test currently overrides `http_
 ## Implementation order
 
 1. `Echo.Agents.Provider` behaviour + `Echo.Agents.Providers` resolver.
-2. Rename `api.ex` → `providers/gemini.ex`, update config + moved test.
-3. `Conversation`/`ConversationServer` provider dispatch — run full suite before proceeding.
-4. `Tools.enabled/1`, `Tools.run/1`, `HttpRequest.declaration/0`, `Tools.tool_config/2`.
-5. `Providers.OpenRouter` module + config + unit tests.
-6. Fake HTTP client test seam + end-to-end-ish provider tests.
-7. Controller/router/dev-UI changes + tests.
-8. Full regression + live manual smoke test against real `OPENROUTER_API_KEY` to confirm the actual server-tool response shape.
+2. `provider` column migration + `ConversationRecord` field + `create_conversation/2`.
+3. Rename `api.ex` → `providers/gemini.ex`, update config + moved test.
+4. `Conversation`/`ConversationServer` provider dispatch — run full suite before proceeding.
+5. `Tools.enabled/1`, `Tools.run/1`, `HttpRequest.declaration/0`, `Tools.tool_config/2`.
+6. `Providers.OpenRouter` module + config + unit tests.
+7. Fake HTTP client test seam + end-to-end-ish provider tests.
+8. Controller/router/dev-UI changes + tests.
+9. Full regression, then the live smoke test below.
+
+## Still outstanding
+
+Everything above is implemented and covered by tests against hand-built fixtures. **Not yet done: the live smoke test against a real `OPENROUTER_KEY`.** Decision 2 above committed to verifying the real response shape before calling this finished, and that is still the one part no test here can prove — `annotations` and the `usage` tool-use counter are captured defensively (whole object, no rigid path) precisely because OpenRouter's docs disagree with themselves about the nesting. Run one conversation with `openrouter:web_search` enabled against the live API and check what actually lands in `ai_messages.metadata` before trusting the audit trail.

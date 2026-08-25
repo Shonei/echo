@@ -24,6 +24,11 @@ defmodule Echo.Agent.ConversationRecord do
     field :model, :string
     field :response_modalities, {:array, :string}
 
+    # Which backend this conversation talks to (see `Echo.Agents.Providers`).
+    # Null means the default, so conversations predating providers resolve to
+    # Gemini exactly as before.
+    field :provider, :string
+
     timestamps(type: :utc_datetime)
   end
 
@@ -39,7 +44,8 @@ defmodule Echo.Agent.ConversationRecord do
       :thinking_budget,
       :tools,
       :model,
-      :response_modalities
+      :response_modalities,
+      :provider
     ])
     |> validate_required([:session_id])
   end

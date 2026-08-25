@@ -98,4 +98,8 @@ config :echo, :auth,
   password: "password",
   secret: "secret"
 
-config :echo, Echo.Agents.API, model: "gemini-3.1-pro-preview", log_debug_body: true
+config :echo, Echo.Agents.Providers.Gemini,
+  model: "gemini-3.1-pro-preview",
+  log_debug_body: true
+
+config :echo, Echo.Agents.Providers.OpenRouter, log_debug_body: true
