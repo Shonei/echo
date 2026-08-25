@@ -9,20 +9,73 @@ defmodule Echo.Agent do
   alias Echo.Agent.ConversationRecord
 
   @doc """
-  Returns a list of conversations by finding all messages with the role
-  'system'. Each result's `resumable` field says whether a durable
-  `ConversationRecord` still exists for it — false once the conversation has
-  been deleted via `Echo.Agents.ConversationManager.kill_conversation/1`.
+  One row per conversation, newest first, for the conversations UI.
+
+  Built from the durable `ai_conversations` records unioned with every session
+  that only has messages — a conversation deleted via
+  `Echo.Agents.ConversationManager.kill_conversation/1` keeps its history and
+  should still be readable, and so should anything predating that table.
+
+  This used to key off a message with role "system", which silently hid every
+  conversation started without a system prompt: none is written in that case
+  (see `maybe_store_system_prompt/1`), so the conversation had nothing to
+  match on and never appeared at all.
+
+  Each row carries `resumable`, false once the durable record is gone.
   """
   def list_conversations do
+    records = Map.new(Repo.all(ConversationRecord), &{&1.session_id, &1})
+    stats = Map.new(message_stats(), &{&1.session_id, &1})
+    previews = Map.new(conversation_previews(), &{&1.session_id, &1})
+
+    (Map.keys(records) ++ Map.keys(stats))
+    |> Enum.uniq()
+    |> Enum.map(&build_conversation(&1, records, stats, previews))
+    |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+  end
+
+  defp message_stats do
     Repo.all(
       from m in Message,
-        left_join: c in ConversationRecord,
-        on: c.session_id == m.session_id,
-        where: m.role == "system",
-        order_by: [desc: m.inserted_at],
-        select: %{m | resumable: not is_nil(c.session_id)}
+        group_by: m.session_id,
+        select: %{
+          session_id: m.session_id,
+          started_at: min(m.inserted_at),
+          message_count: count(m.id)
+        }
     )
+  end
+
+  # The opening line of each conversation: its system prompt when there is one,
+  # otherwise the first thing the user said, so a row is never blank.
+  defp conversation_previews do
+    Repo.all(
+      from m in Message,
+        where: m.type == "text" and m.role in ["system", "user"],
+        distinct: m.session_id,
+        order_by: [asc: m.session_id, asc: m.id],
+        select: %{session_id: m.session_id, role: m.role, content: m.content, model: m.model}
+    )
+  end
+
+  defp build_conversation(session_id, records, stats, previews) do
+    record = Map.get(records, session_id)
+    stat = Map.get(stats, session_id)
+    preview = Map.get(previews, session_id)
+
+    %{
+      session_id: session_id,
+      model: (record && record.model) || (preview && preview.model),
+      # Null on a record means the default, Gemini. Left nil when the record is
+      # gone: we genuinely don't know, and guessing would mislabel a deleted
+      # OpenRouter conversation.
+      provider: record && (record.provider || "gemini"),
+      content: (record && record.system_prompt) || (preview && preview.content),
+      preview_role: preview && preview.role,
+      message_count: (stat && stat.message_count) || 0,
+      inserted_at: (record && record.inserted_at) || (stat && stat.started_at),
+      resumable: not is_nil(record)
+    }
   end
 
   @doc """

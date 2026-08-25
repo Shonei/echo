@@ -26,12 +26,6 @@ defmodule Echo.Agent.Message do
     field :reference_id, :integer
     field :metadata, :map
 
-    # Set only by `Echo.Agent.list_conversations/0`, which joins against
-    # `ai_conversations` to tell the UI whether this conversation still has a
-    # durable record (and so can be transparently resumed) or was deleted via
-    # `Echo.Agents.ConversationManager.kill_conversation/1`.
-    field :resumable, :boolean, virtual: true
-
     timestamps(type: :utc_datetime)
   end
 

@@ -8,20 +8,47 @@
 
   <div class="bg-white rounded-xl shadow-md overflow-hidden">
     <ul role="list" class="divide-y divide-gray-200">
-      <li :for={conversation <- @conversations} class="p-6 hover:bg-gray-50 transition-colors duration-150">
+      <li
+        :for={conversation <- @conversations}
+        class="p-6 hover:bg-gray-50 transition-colors duration-150"
+      >
         <div class="flex items-center justify-between">
           <div class="flex flex-col flex-1 min-w-0">
-            <div class="flex items-center">
-              <span class="text-sm font-medium text-blue-600 truncate">Session: {conversation.session_id}</span>
-              <span :if={conversation.model} class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+            <div class="flex items-center flex-wrap gap-y-1">
+              <span class="text-sm font-medium text-blue-600 truncate">
+                Session: {conversation.session_id}
+              </span>
+              <span
+                :if={conversation.provider}
+                class={[
+                  "ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+                  conversation.provider == "openrouter" && "bg-emerald-100 text-emerald-800",
+                  conversation.provider != "openrouter" && "bg-sky-100 text-sky-800"
+                ]}
+              >
+                {conversation.provider}
+              </span>
+              <span
+                :if={conversation.model}
+                class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
+              >
                 {conversation.model}
               </span>
             </div>
             <div class="mt-2 text-sm text-gray-500 line-clamp-2">
-              <pre class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{conversation.content}</pre>
+              <pre
+                :if={conversation.content}
+                class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0"
+              >{conversation.content}</pre>
+              <span :if={!conversation.content} class="italic text-gray-400">
+                No system prompt
+              </span>
             </div>
             <div class="mt-2 text-xs text-gray-400">
-              Started: {Calendar.strftime(conversation.inserted_at, "%Y-%m-%d %H:%M:%S")}
+              Started: {Calendar.strftime(conversation.inserted_at, "%Y-%m-%d %H:%M:%S")} · {conversation.message_count} message(s)
+              <span :if={conversation.preview_role == "user"} class="ml-1">
+                · preview is the first user message
+              </span>
             </div>
           </div>
           <div class="ml-4 flex-shrink-0 flex items-center space-x-4">
@@ -32,17 +59,24 @@
             >
               Resume Chat
             </a>
-            <span :if={!conversation.resumable} class="text-sm text-gray-400" title="Deleted — no durable record to resume from">
+            <span
+              :if={!conversation.resumable}
+              class="text-sm text-gray-400"
+              title="Deleted — no durable record to resume from"
+            >
               Deleted
             </span>
-            <a href={~p"/ai-messages/#{conversation.session_id}"} class="text-gray-400 hover:text-gray-600">
+            <a
+              href={~p"/ai-messages/#{conversation.session_id}"}
+              class="text-gray-400 hover:text-gray-600"
+            >
               <.icon name="hero-chevron-right" class="h-5 w-5" />
             </a>
           </div>
         </div>
       </li>
     </ul>
-    
+
     <div :if={length(@conversations) == 0} class="p-8 text-center text-gray-500">
       No conversations found.
     </div>

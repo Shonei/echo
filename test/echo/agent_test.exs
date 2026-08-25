@@ -91,5 +91,58 @@ defmodule Echo.AgentTest do
 
       assert %{resumable: false} = Enum.find(Agent.list_conversations(), &(&1.session_id == id))
     end
+
+    test "lists a conversation started without a system prompt" do
+      # The bug this guards: listing used to key off a message with role
+      # "system", and none is written when there's no system prompt, so these
+      # conversations were invisible in the UI no matter how many turns they had.
+      id = unique("convo")
+      {:ok, _record} = Agent.create_conversation(id, %{"model" => "openai/gpt-5.6-luna"})
+
+      assert %{resumable: true, content: nil} =
+               Enum.find(Agent.list_conversations(), &(&1.session_id == id))
+    end
+
+    test "previews the first user message when there is no system prompt" do
+      id = unique("convo")
+      {:ok, _record} = Agent.create_conversation(id, %{})
+
+      {:ok, _} =
+        Agent.create_message(%{session_id: id, role: "user", type: "text", content: "hi"})
+
+      {:ok, _} =
+        Agent.create_message(%{session_id: id, role: "model", type: "text", content: "hello"})
+
+      assert %{content: "hi", preview_role: "user", message_count: 2} =
+               Enum.find(Agent.list_conversations(), &(&1.session_id == id))
+    end
+
+    test "reports the provider, treating a null one as the Gemini default" do
+      gemini = unique("convo")
+      openrouter = unique("convo")
+
+      {:ok, _} = Agent.create_conversation(gemini, %{})
+      {:ok, _} = Agent.create_conversation(openrouter, %{"provider" => "openrouter"})
+
+      conversations = Agent.list_conversations()
+
+      assert %{provider: "gemini"} = Enum.find(conversations, &(&1.session_id == gemini))
+      assert %{provider: "openrouter"} = Enum.find(conversations, &(&1.session_id == openrouter))
+    end
+
+    test "keeps a deleted conversation's history listed, with an unknown provider" do
+      id = unique("convo")
+      {:ok, _} = Agent.create_conversation(id, %{"provider" => "openrouter"})
+
+      {:ok, _} =
+        Agent.create_message(%{session_id: id, role: "user", type: "text", content: "hi"})
+
+      Agent.delete_conversation(id)
+
+      # The record carried the provider, so with it gone we genuinely don't
+      # know -- better blank than mislabelled as Gemini.
+      assert %{resumable: false, provider: nil, content: "hi"} =
+               Enum.find(Agent.list_conversations(), &(&1.session_id == id))
+    end
   end
 end
