@@ -27,7 +27,7 @@ defmodule Echo.Agents.ConversationManager do
   Starts a new conversation with the given configuration options.
   Returns the `conversation_id`.
 
-  The configuration is persisted to Postgres (`Echo.Agent.create_conversation/1`)
+  The configuration is persisted to Postgres (`Echo.Agent.create_conversation/2`)
   before the process is started, so the DB write, not the in-memory process,
   is the source of truth `Echo.Agents.ConversationServer.init/1` hydrates
   from — this is what lets a conversation be transparently resumed (see
@@ -36,7 +36,7 @@ defmodule Echo.Agents.ConversationManager do
   def start_conversation(opts \\ %{}) do
     id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
 
-    with {:ok, _record} <- Echo.Agent.create_conversation(Map.put(opts, "session_id", id)),
+    with {:ok, _record} <- Echo.Agent.create_conversation(id, opts),
          {:ok, _pid} <- start_child(id) do
       {:ok, id}
     else
@@ -46,6 +46,11 @@ defmodule Echo.Agents.ConversationManager do
       {:error, reason} ->
         require Logger
         Logger.error("Failed to start conversation #{id}: #{inspect(reason)}")
+        # Only reachable once the record was already created (a
+        # `create_conversation/2` failure short-circuits the `with` before
+        # this branch): don't leave a durable record behind for a
+        # conversation that never actually got a live process.
+        Echo.Agent.delete_conversation(id)
         {:error, reason}
     end
   end

@@ -44,7 +44,7 @@ defmodule Echo.Agents.ConversationServer do
   # --- Callbacks ---
 
   # The conversation's config and history live durably in Postgres (see
-  # `Echo.Agent.ConversationRecord` and `Echo.Agent.create_conversation/1`) so
+  # `Echo.Agent.ConversationRecord` and `Echo.Agent.create_conversation/2`) so
   # this process can be rebuilt after a crash or a redeploy wipes the
   # registry — `opts` here only ever needs to carry `:id`; everything else is
   # loaded fresh, which is what makes "create" and "resume" the same path.
@@ -104,45 +104,90 @@ defmodule Echo.Agents.ConversationServer do
 
     # Persisted before the turn runs: a resume must be able to see the user's
     # message even if the model call itself never completes.
-    with :ok <- store_parts(convo.id, "user", parts, convo.model),
-         {:ok, messages, reply_parts, metadata} <- run_turn(new_messages, api_opts, convo, [], 0) do
-      {:reply, {:ok, reply_parts, metadata}, %{convo | messages: messages}}
-    else
-      {:error, reason} -> {:reply, {:error, reason}, convo}
+    case store_parts(convo.id, "user", parts, convo.model) do
+      :ok ->
+        case run_turn(new_messages, api_opts, convo, [], 0) do
+          {:ok, messages, reply_parts, metadata} ->
+            {:reply, {:ok, reply_parts, metadata}, %{convo | messages: messages}}
+
+          # `messages` here is whatever actually made it into Postgres before
+          # the failure, never more — the in-memory state has to match the
+          # durable one exactly, or a later resume replays a history this
+          # process never actually had (see `replay_into_turns/1`).
+          {:error, reason, messages} ->
+            {:reply, {:error, reason}, %{convo | messages: messages}}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, convo}
     end
   end
 
   # Calls Gemini, and if it asked for a tool Echo owns, runs the tool and calls
   # again with the result. Client-side tools (the blog editor's `edit_text`, for
   # instance) are not in the registry, so they simply come back to the caller.
-  # Every turn is persisted before the next Gemini call is made, so a resumed
-  # conversation always reflects exactly what the caller already saw.
+  #
+  # Every turn is persisted before the next Gemini call is made. On failure,
+  # returns `{:error, reason, messages}` where `messages` reflects exactly
+  # what was durably persisted so far -- never a turn that failed to persist,
+  # and never missing a turn that succeeded -- so the caller can always set
+  # its in-memory state to match Postgres, whether this call ultimately
+  # succeeded or not.
   defp run_turn(messages, api_opts, convo, acc_parts, depth) do
-    with {:ok, response} <- Echo.Agents.API.generate_content(messages, api_opts),
-         {:ok, ai_parts, metadata} <- extract_parts(response),
-         messages = messages ++ [%{"role" => "model", "parts" => ai_parts}],
-         :ok <- store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
-      acc_parts = acc_parts ++ ai_parts
+    case Echo.Agents.API.generate_content(messages, api_opts) do
+      {:ok, response} ->
+        case extract_parts(response) do
+          {:ok, ai_parts, metadata} ->
+            model_messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
 
-      case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
-        [] ->
-          {:ok, messages, acc_parts, metadata}
+            case store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
+              :ok ->
+                continue_turn(
+                  model_messages,
+                  ai_parts,
+                  api_opts,
+                  convo,
+                  acc_parts ++ ai_parts,
+                  metadata,
+                  depth
+                )
 
-        calls when depth >= @max_tool_iterations ->
-          Logger.warning(
-            "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
-          )
+              {:error, reason} ->
+                {:error, reason, messages}
+            end
 
-          {:ok, messages, acc_parts, metadata}
+          {:error, reason} ->
+            {:error, reason, messages}
+        end
 
-        calls ->
-          response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+      {:error, reason} ->
+        {:error, reason, messages}
+    end
+  end
 
-          with :ok <- store_parts(convo.id, "user", response_parts, convo.model) do
-            messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
-            run_turn(messages, api_opts, convo, acc_parts, depth + 1)
-          end
-      end
+  defp continue_turn(messages, ai_parts, api_opts, convo, acc_parts, metadata, depth) do
+    case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
+      [] ->
+        {:ok, messages, acc_parts, metadata}
+
+      calls when depth >= @max_tool_iterations ->
+        Logger.warning(
+          "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
+        )
+
+        {:ok, messages, acc_parts, metadata}
+
+      calls ->
+        response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+
+        case store_parts(convo.id, "user", response_parts, convo.model) do
+          :ok ->
+            tool_messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
+            run_turn(tool_messages, api_opts, convo, acc_parts, depth + 1)
+
+          {:error, reason} ->
+            {:error, reason, messages}
+        end
     end
   end
 
@@ -199,13 +244,19 @@ defmodule Echo.Agents.ConversationServer do
         part_to_attrs(part)
         |> Map.merge(%{session_id: session_id, role: role, model: model, metadata: metadata})
 
-      case Echo.Agent.create_message(attrs) do
-        {:ok, _message} ->
-          {:cont, :ok}
+      try do
+        case Echo.Agent.create_message(attrs) do
+          {:ok, _message} ->
+            {:cont, :ok}
 
-        {:error, changeset} ->
-          Logger.error("Failed to persist ai_message: #{inspect(changeset.errors)}")
-          {:halt, {:error, {:persistence_failed, changeset}}}
+          {:error, changeset} ->
+            Logger.error("Failed to persist ai_message: #{inspect(changeset.errors)}")
+            {:halt, {:error, {:persistence_failed, changeset}}}
+        end
+      rescue
+        e ->
+          Logger.error("Exception persisting ai_message: #{inspect(e)}")
+          {:halt, {:error, {:persistence_failed, e}}}
       end
     end)
   end

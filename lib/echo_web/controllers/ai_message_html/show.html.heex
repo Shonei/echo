@@ -5,9 +5,16 @@
       <p class="text-sm text-gray-500 mt-1">Session ID: {@session_id}</p>
     </div>
     <div class="flex items-center space-x-4">
-      <a href={~p"/agent-chat/#{@session_id}"} class="text-blue-600 hover:text-blue-800 flex items-center">
+      <a
+        :if={@resumable}
+        href={~p"/agent-chat/#{@session_id}"}
+        class="text-blue-600 hover:text-blue-800 flex items-center"
+      >
         <.icon name="hero-chat-bubble-left-right" class="w-4 h-4 mr-2" /> Resume Chat
       </a>
+      <span :if={!@resumable} class="text-sm text-gray-400" title="Deleted — no durable record to resume from">
+        Deleted, no longer resumable
+      </span>
       <a href={~p"/ai-messages"} class="text-blue-600 hover:text-blue-800 flex items-center">
         <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> Back to List
       </a>

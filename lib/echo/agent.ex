@@ -9,13 +9,19 @@ defmodule Echo.Agent do
   alias Echo.Agent.ConversationRecord
 
   @doc """
-  Returns a list of conversations by finding all messages with the role 'system'.
+  Returns a list of conversations by finding all messages with the role
+  'system'. Each result's `resumable` field says whether a durable
+  `ConversationRecord` still exists for it — false once the conversation has
+  been deleted via `Echo.Agents.ConversationManager.kill_conversation/1`.
   """
   def list_conversations do
     Repo.all(
       from m in Message,
+        left_join: c in ConversationRecord,
+        on: c.session_id == m.session_id,
         where: m.role == "system",
-        order_by: [desc: m.inserted_at]
+        order_by: [desc: m.inserted_at],
+        select: %{m | resumable: not is_nil(c.session_id)}
     )
   end
 
@@ -128,14 +134,18 @@ defmodule Echo.Agent do
   a conversation's history (see `Echo.Agents.ConversationServer.init/1`)
   never sees it duplicated across restarts.
 
-  `opts` accepts either atom or string keys, matching every existing caller
-  of `Echo.Agents.ConversationManager.start_conversation/1`.
+  `id` is the conversation id and is always what ends up as `session_id`,
+  full stop — it's a separate argument rather than a key in `opts` so a
+  caller-supplied `opts` can never override the id
+  `Echo.Agents.ConversationManager.start_conversation/1` generated. `opts`
+  accepts either atom or string keys for everything else, matching every
+  existing caller.
 
   Returns `{:ok, %ConversationRecord{}}` or `{:error, reason}`.
   """
-  def create_conversation(opts) do
+  def create_conversation(id, opts \\ %{}) do
     attrs = %{
-      "session_id" => opt(opts, :session_id, "session_id"),
+      "session_id" => id,
       "system_prompt" => opt(opts, :system_prompt, "system_prompt"),
       "temperature" => opt(opts, :temperature, "temperature"),
       "max_output_tokens" => opt(opts, :max_output_tokens, "max_output_tokens"),

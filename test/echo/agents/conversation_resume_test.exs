@@ -45,10 +45,46 @@ defmodule Echo.Agents.ConversationResumeTest do
       state = :sys.get_state(new_pid)
       assert state.system_prompt == "be nice"
 
+      # The replayed history, plus the just-failed turn's user message --
+      # persisted before the (failing) model call, so it's correctly part of
+      # the resumed process's state too, not silently dropped.
       assert [
                %{"role" => "user", "parts" => [%{"text" => "hi"}]},
-               %{"role" => "model", "parts" => [%{"text" => "hello!"}]}
+               %{"role" => "model", "parts" => [%{"text" => "hello!"}]},
+               %{"role" => "user", "parts" => [%{"text" => "are you there?"}]}
              ] = state.messages
+    end
+  end
+
+  describe "a turn that fails after the user's message is persisted" do
+    test "leaves the live process's in-memory state matching Postgres, not stale" do
+      {:ok, id} = ConversationManager.start_conversation(%{})
+      [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+
+      # No API key configured (see setup above), so the model call always
+      # fails right after the user's message is durably persisted.
+      assert ConversationManager.message(id, "first") == {:error, :missing_api_key}
+
+      rows = Echo.Agent.list_messages_by_session(id)
+      assert [%{role: "user", content: "first"}] = rows
+
+      # The bug this guards against: the process replying with its stale
+      # pre-call state on failure, so `messages` stays `[]` here even though
+      # Postgres already has the turn -- a later resume would then see a row
+      # this live process itself never accounted for.
+      assert :sys.get_state(pid).messages == [
+               %{"role" => "user", "parts" => [%{"text" => "first"}]}
+             ]
+
+      # And it keeps matching turn over turn, not just on the first one.
+      assert ConversationManager.message(id, "second") == {:error, :missing_api_key}
+
+      assert :sys.get_state(pid).messages == [
+               %{"role" => "user", "parts" => [%{"text" => "first"}]},
+               %{"role" => "user", "parts" => [%{"text" => "second"}]}
+             ]
+
+      assert length(Echo.Agent.list_messages_by_session(id)) == 2
     end
   end
 

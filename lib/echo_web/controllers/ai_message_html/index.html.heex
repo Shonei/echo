@@ -25,9 +25,16 @@
             </div>
           </div>
           <div class="ml-4 flex-shrink-0 flex items-center space-x-4">
-            <a href={~p"/agent-chat/#{conversation.session_id}"} class="text-sm font-medium text-blue-600 hover:text-blue-800">
+            <a
+              :if={conversation.resumable}
+              href={~p"/agent-chat/#{conversation.session_id}"}
+              class="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
               Resume Chat
             </a>
+            <span :if={!conversation.resumable} class="text-sm text-gray-400" title="Deleted — no durable record to resume from">
+              Deleted
+            </span>
             <a href={~p"/ai-messages/#{conversation.session_id}"} class="text-gray-400 hover:text-gray-600">
               <.icon name="hero-chevron-right" class="h-5 w-5" />
             </a>

@@ -10,6 +10,7 @@ defmodule EchoWeb.AIMessageController do
 
   def show(conn, %{"id" => session_id}) do
     messages = Agent.list_messages_by_session(session_id)
-    render(conn, :show, session_id: session_id, messages: messages)
+    resumable = not is_nil(Agent.get_conversation(session_id))
+    render(conn, :show, session_id: session_id, messages: messages, resumable: resumable)
   end
 end
