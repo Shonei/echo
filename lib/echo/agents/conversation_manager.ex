@@ -26,26 +26,32 @@ defmodule Echo.Agents.ConversationManager do
   @doc """
   Starts a new conversation with the given configuration options.
   Returns the `conversation_id`.
+
+  The configuration is persisted to Postgres (`Echo.Agent.create_conversation/1`)
+  before the process is started, so the DB write, not the in-memory process,
+  is the source of truth `Echo.Agents.ConversationServer.init/1` hydrates
+  from — this is what lets a conversation be transparently resumed (see
+  `with_process/2`) after its process is gone.
   """
   def start_conversation(opts \\ %{}) do
     id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-    opts = Map.put(opts, :id, id)
 
-    case DynamicSupervisor.start_child(
-           Echo.Agents.ConversationSupervisor,
-           {ConversationServer, opts}
-         ) do
-      {:ok, _pid} ->
-        {:ok, id}
-
+    with {:ok, _record} <- Echo.Agent.create_conversation(Map.put(opts, "session_id", id)),
+         {:ok, _pid} <- start_child(id) do
+      {:ok, id}
+    else
       {:error, {:already_started, _pid}} ->
         {:ok, id}
 
-      error ->
+      {:error, reason} ->
         require Logger
-        Logger.error("Failed to start conversation #{id}: #{inspect(error)}")
-        {:error, error}
+        Logger.error("Failed to start conversation #{id}: #{inspect(reason)}")
+        {:error, reason}
     end
+  end
+
+  defp start_child(id) do
+    DynamicSupervisor.start_child(Echo.Agents.ConversationSupervisor, {ConversationServer, %{id: id}})
   end
 
   @doc """
@@ -69,21 +75,39 @@ defmodule Echo.Agents.ConversationManager do
   end
 
   @doc """
-  Kills (removes) a conversation process.
+  Kills (removes) a conversation process and deletes its durable record.
+
+  Deleting the record (not just the process) is what makes the delete stick:
+  without it, the next `message/2` or `content/2` call for this id would
+  just transparently resume the conversation `with_process/2` just deleted.
   """
   def kill_conversation(conversation_id) do
+    Echo.Agent.delete_conversation(conversation_id)
+
     with_process(conversation_id, fn pid ->
       ConversationServer.kill(pid)
     end)
   end
 
+  # Resumes a conversation transparently when its process isn't running: if
+  # a durable record still exists for this id, `start_child/1` starts a fresh
+  # `ConversationServer`, whose `init/1` rehydrates config + history from
+  # Postgres. If no durable record exists (never created, or deleted via
+  # `kill_conversation/1`), `init/1` stops with `:conversation_not_found`,
+  # which surfaces here as the same error callers already handled before
+  # resume existed.
   defp with_process(conversation_id, callback) do
     case Registry.lookup(Echo.Agents.ConversationRegistry, conversation_id) do
       [{pid, _}] ->
         callback.(pid)
 
       [] ->
-        {:error, :conversation_not_found}
+        case start_child(conversation_id) do
+          {:ok, pid} -> callback.(pid)
+          {:error, {:already_started, pid}} -> callback.(pid)
+          {:error, :conversation_not_found} -> {:error, :conversation_not_found}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 end

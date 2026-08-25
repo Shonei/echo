@@ -1,21 +1,17 @@
 defmodule Echo.Agents.API do
   @moduledoc """
-  A GenServer that abstracts the Gemini API for generating content.
-  It maps Elixir structs and maps to the Gemini REST API JSON shapes.
+  A plain client for the Gemini API. Holds no process and no state: every call
+  reads config fresh and makes its own request on the caller's process, so
+  concurrent callers (one `Echo.Agents.ConversationServer` per conversation)
+  run in parallel instead of queueing behind a single shared process.
+
+  Maps Elixir structs and maps to the Gemini REST API JSON shapes.
   """
-  use GenServer
   require Logger
 
   defstruct [:api_key, :http_client, :model, :log_debug_body]
 
   # --- Client API ---
-
-  @doc """
-  Starts the API GenServer.
-  """
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
 
   @doc """
   Calls the Gemini API generateContent endpoint.
@@ -25,116 +21,100 @@ defmodule Echo.Agents.API do
     [%{role: "user", parts: [%{text: "..."}]}]
   """
   def generate_content(contents, opts \\ [], timeout \\ 300_000) do
-    GenServer.call(__MODULE__, {:generate_content, contents, opts, timeout}, timeout)
-  end
+    config = get_config()
 
-  @doc """
-  Calls the Gemini API to list available models.
-  """
-  def list_models(timeout \\ 300_000) do
-    GenServer.call(__MODULE__, {:list_models, timeout}, timeout)
-  end
-
-  # --- Callbacks ---
-
-  @impl true
-  def init(_opts) do
-    config = Application.get_env(:echo, __MODULE__, [])
-    api_key = Keyword.get(config, :api_key)
-    http_client = Keyword.get(config, :http_client, Finch)
-    model = Keyword.get(config, :model)
-    log_debug_body = Keyword.get(config, :log_debug_body, false)
-
-    if is_nil(api_key) || api_key == "" do
+    if is_nil(config.api_key) || config.api_key == "" do
       Logger.warning("GEMINI_API_KEY is not set. API calls will fail.")
-    end
-
-    {:ok,
-     %__MODULE__{
-       api_key: api_key,
-       http_client: http_client,
-       model: model,
-       log_debug_body: log_debug_body
-     }}
-  end
-
-  @impl true
-  def handle_call({:list_models, timeout}, _, state) do
-    if is_nil(state.api_key) || state.api_key == "" do
-      {:reply, {:error, :missing_api_key}, state}
+      {:error, :missing_api_key}
     else
-      url = "https://generativelanguage.googleapis.com/v1beta/models"
-
-      headers = [
-        {"x-goog-api-key", state.api_key}
-      ]
-
-      req = state.http_client.build(:get, url, headers)
-
-      case state.http_client.request(req, Echo.Finch,
-             receive_timeout: timeout,
-             pool_timeout: 15_000
-           ) do
-        {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
-          case Jason.decode(resp_body) do
-            {:ok, decoded} -> {:reply, {:ok, decoded}, state}
-            {:error, reason} -> {:reply, {:error, {:json_decode_error, reason, resp_body}}, state}
-          end
-
-        {:ok, %{status: status, body: resp_body}} ->
-          Logger.error("Gemini API Error: [#{status}] #{resp_body}")
-          {:reply, {:error, {:api_error, status, resp_body}}, state}
-
-        {:error, exception} ->
-          Logger.error("Gemini API Request Failed: #{inspect(exception)}")
-          {:reply, {:error, {:request_failed, exception}}, state}
-      end
-    end
-  end
-
-  @impl true
-  def handle_call({:generate_content, contents, opts, timeout}, _from, state) do
-    if is_nil(state.api_key) || state.api_key == "" do
-      {:reply, {:error, :missing_api_key}, state}
-    else
-      model = Keyword.get(opts, :model) || state.model
+      model = Keyword.get(opts, :model) || config.model
 
       url =
         "https://generativelanguage.googleapis.com/v1beta/models/#{model}:generateContent"
 
       headers = [
         {"Content-Type", "application/json"},
-        {"x-goog-api-key", state.api_key}
+        {"x-goog-api-key", config.api_key}
       ]
 
       body = contents |> build_payload(opts) |> Jason.encode!()
 
-      if state.log_debug_body do
+      if config.log_debug_body do
         Logger.info("Gemini API Request Body", %{body: body, url: url, headers: headers})
       end
 
-      # Using the http client from state (defaults to Finch)
-      req = state.http_client.build(:post, url, headers, body)
+      req = config.http_client.build(:post, url, headers, body)
 
-      case state.http_client.request(req, Echo.Finch,
+      case config.http_client.request(req, Echo.Finch,
              receive_timeout: timeout,
              pool_timeout: 15_000
            ) do
         {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
           case Jason.decode(resp_body) do
-            {:ok, decoded} -> {:reply, {:ok, decoded}, state}
-            {:error, reason} -> {:reply, {:error, {:json_decode_error, reason, resp_body}}, state}
+            {:ok, decoded} -> {:ok, decoded}
+            {:error, reason} -> {:error, {:json_decode_error, reason, resp_body}}
           end
 
         {:ok, %{status: status, body: resp_body}} ->
           Logger.error("Gemini API Error: [#{status}] #{resp_body}")
-          {:reply, {:error, {:api_error, status, resp_body}}, state}
+          {:error, {:api_error, status, resp_body}}
 
         {:error, exception} ->
           Logger.error("Gemini API Request Failed: #{inspect(exception)}")
-          {:reply, {:error, {:request_failed, exception}}, state}
+          {:error, {:request_failed, exception}}
       end
     end
+  end
+
+  @doc """
+  Calls the Gemini API to list available models.
+  """
+  def list_models(timeout \\ 300_000) do
+    config = get_config()
+
+    if is_nil(config.api_key) || config.api_key == "" do
+      {:error, :missing_api_key}
+    else
+      url = "https://generativelanguage.googleapis.com/v1beta/models"
+
+      headers = [
+        {"x-goog-api-key", config.api_key}
+      ]
+
+      req = config.http_client.build(:get, url, headers)
+
+      case config.http_client.request(req, Echo.Finch,
+             receive_timeout: timeout,
+             pool_timeout: 15_000
+           ) do
+        {:ok, %{status: status, body: resp_body}} when status in 200..299 ->
+          case Jason.decode(resp_body) do
+            {:ok, decoded} -> {:ok, decoded}
+            {:error, reason} -> {:error, {:json_decode_error, reason, resp_body}}
+          end
+
+        {:ok, %{status: status, body: resp_body}} ->
+          Logger.error("Gemini API Error: [#{status}] #{resp_body}")
+          {:error, {:api_error, status, resp_body}}
+
+        {:error, exception} ->
+          Logger.error("Gemini API Request Failed: #{inspect(exception)}")
+          {:error, {:request_failed, exception}}
+      end
+    end
+  end
+
+  # --- Configuration ---
+
+  defp get_config do
+    config = Application.get_env(:echo, __MODULE__, [])
+
+    %__MODULE__{
+      api_key: Keyword.get(config, :api_key),
+      http_client: Keyword.get(config, :http_client, Finch),
+      model: Keyword.get(config, :model),
+      log_debug_body: Keyword.get(config, :log_debug_body, false)
+    }
   end
 
   # --- Payload construction ---
