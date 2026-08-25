@@ -28,6 +28,7 @@ defmodule Echo.Agents.Providers.OpenRouter do
   defstruct [:api_key, :http_client, :log_debug_body]
 
   @url "https://openrouter.ai/api/v1/chat/completions"
+  @models_url "https://openrouter.ai/api/v1/models"
 
   # Finish reasons that mean "the model stopped normally". Anything else, with
   # nothing extracted, is an error rather than an empty reply.
@@ -94,6 +95,67 @@ defmodule Echo.Agents.Providers.OpenRouter do
         Logger.error("OpenRouter API Request Failed: #{inspect(exception)}")
         {:error, {:request_failed, exception}}
     end
+  end
+
+  @doc """
+  Lists the models OpenRouter currently fronts.
+
+  The endpoint is public, so this works without a key. It's what lets the dev
+  UI offer a real model list instead of a hardcoded one that goes stale —
+  OpenRouter fronts hundreds and they turn over constantly.
+
+  Returns `{:ok, [%{id:, name:, tools?:}]}` sorted by name, where `tools?`
+  says whether the model can call tools at all.
+  """
+  def list_models(timeout \\ 15_000) do
+    config = get_config()
+
+    headers =
+      if config.api_key && config.api_key != "" do
+        [{"Authorization", "Bearer #{config.api_key}"}]
+      else
+        []
+      end
+
+    req = config.http_client.build(:get, @models_url, headers)
+
+    case config.http_client.request(req, Echo.Finch,
+           receive_timeout: timeout,
+           pool_timeout: 5_000
+         ) do
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        case Jason.decode(body) do
+          {:ok, %{"data" => data}} when is_list(data) -> {:ok, parse_models(data)}
+          {:ok, other} -> {:error, {:unexpected_response_format, other}}
+          {:error, reason} -> {:error, {:json_decode_error, reason, body}}
+        end
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("OpenRouter models API Error: [#{status}] #{body}")
+        {:error, {:api_error, status, body}}
+
+      {:error, exception} ->
+        Logger.error("OpenRouter models request failed: #{inspect(exception)}")
+        {:error, {:request_failed, exception}}
+    end
+  end
+
+  defp parse_models(data) do
+    data
+    |> Enum.flat_map(fn
+      %{"id" => id} = model when is_binary(id) ->
+        [
+          %{
+            id: id,
+            name: model["name"] || id,
+            tools?: "tools" in (model["supported_parameters"] || [])
+          }
+        ]
+
+      _ ->
+        []
+    end)
+    |> Enum.sort_by(& &1.name)
   end
 
   # Settings this provider knowingly doesn't map yet. Logged rather than

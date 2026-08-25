@@ -1,6 +1,8 @@
 defmodule EchoWeb.AgentChatController do
   use EchoWeb, :controller
 
+  require Logger
+
   alias Echo.Agents.ConversationManager
   alias Echo.Agent, as: AgentDB
 
@@ -18,7 +20,7 @@ defmodule EchoWeb.AgentChatController do
   ]
 
   def new(conn, _params) do
-    render(conn, :new, models: @models, providers: @providers)
+    render_form(conn)
   end
 
   def create(conn, %{"agent" => agent_params}) do
@@ -26,7 +28,8 @@ defmodule EchoWeb.AgentChatController do
 
     with {:ok, provider_module} <- Echo.Agents.Providers.resolve(provider),
          {:ok, raw_tools} <- parse_raw_tools(agent_params["openrouter_tools"]),
-         opts = build_opts(agent_params, provider, provider_module, raw_tools),
+         {:ok, model} <- model(agent_params, provider),
+         opts = build_opts(agent_params, provider, provider_module, model, raw_tools),
          {:ok, conversation_id} <- ConversationManager.start_conversation(opts) do
       conn
       |> put_flash(:info, "Agent initialized successfully.")
@@ -35,31 +38,72 @@ defmodule EchoWeb.AgentChatController do
       {:error, reason} ->
         conn
         |> put_flash(:error, "Failed to start conversation: #{describe(reason)}")
-        |> render(:new, models: @models, providers: @providers)
+        |> render_form()
     end
   end
 
-  defp build_opts(params, provider, provider_module, raw_tools) do
+  defp render_form(conn) do
+    render(
+      conn,
+      :new,
+      models: @models,
+      providers: @providers,
+      openrouter_models: openrouter_models()
+    )
+  end
+
+  # Fetched live rather than hardcoded: OpenRouter fronts hundreds of models and
+  # the list turns over constantly. If the call fails the form still works --
+  # the slug field below the select takes anything.
+  defp openrouter_models do
+    case Echo.Agents.Providers.OpenRouter.list_models(5_000) do
+      {:ok, models} ->
+        models
+
+      {:error, reason} ->
+        Logger.warning("Could not list OpenRouter models for the agent form: #{inspect(reason)}")
+        []
+    end
+  end
+
+  # A typed slug wins over the select, so a model too new to be listed is still
+  # reachable. Caught here rather than at the first message: OpenRouter has no
+  # default model, and finding that out only after typing a message is a
+  # miserable way to learn it.
+  defp model(params, "openrouter") do
+    case presence(params["openrouter_model_custom"]) || presence(params["openrouter_model"]) do
+      nil -> {:error, :missing_model}
+      model -> {:ok, model}
+    end
+  end
+
+  defp model(params, _provider), do: {:ok, presence(params["model"])}
+
+  defp build_opts(params, provider, provider_module, model, raw_tools) do
     %{
       "provider" => provider,
       "system_prompt" => presence(params["system_prompt"]),
-      "model" => model(params, provider),
+      "model" => model,
       "temperature" => parse_float(params["temperature"]),
       "max_output_tokens" => parse_integer(params["max_output_tokens"]),
-      "thinking_enabled" => checked?(params["thinking_enabled"]),
-      "thinking_budget" => parse_integer(params["thinking_budget"]),
-      "response_modalities" => modalities(params["response_modalities"]),
+      "thinking_enabled" => thinking_enabled(params, provider),
+      "thinking_budget" => thinking_budget(params, provider),
+      "response_modalities" => modalities(params["response_modalities"], provider),
       "tools" => tools(params, provider, provider_module, raw_tools)
     }
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
 
-  # OpenRouter's catalogue is far too large for a select, and it has no default
-  # model of its own, so that provider gets a free-text slug instead.
-  defp model(params, "openrouter"), do: presence(params["openrouter_model"])
-  defp model(params, _provider), do: presence(params["model"])
+  # Thinking and image output are Gemini-only today; the OpenRouter provider
+  # would only log that it ignored them, so don't send them in the first place.
+  defp thinking_enabled(_params, "openrouter"), do: nil
+  defp thinking_enabled(params, _provider), do: checked?(params["thinking_enabled"])
 
+  defp thinking_budget(_params, "openrouter"), do: nil
+  defp thinking_budget(params, _provider), do: parse_integer(params["thinking_budget"])
+
+  defp describe(:missing_model), do: "OpenRouter needs a model — pick one or type a slug."
   defp describe({:unknown_provider, name}), do: "unknown provider #{inspect(name)}"
   defp describe({:invalid_tools_json, message}), do: "tools JSON is invalid: #{message}"
   defp describe(reason), do: inspect(reason)
@@ -140,17 +184,30 @@ defmodule EchoWeb.AgentChatController do
   defp checked?(true), do: true
   defp checked?(_), do: nil
 
+  defp modalities(_params, "openrouter"), do: nil
+  defp modalities(params, _provider), do: modalities(params)
+
   defp modalities(%{"text" => "true", "image" => "true"}), do: ["TEXT", "IMAGE"]
   defp modalities(%{"image" => "true"}), do: ["IMAGE"]
   defp modalities(%{"text" => "true"}), do: ["TEXT"]
   defp modalities(list) when is_list(list), do: Enum.map(list, &String.upcase/1)
   defp modalities(_), do: ["TEXT"]
 
-  # OpenRouter's server-side tools have no fixed set to tick, and their syntax
-  # is its own, so they're pasted in raw -- the same way Gemini's built-ins are
-  # accepted as raw Gemini syntax below.
+  # OpenRouter resolves these two itself, inside a single response: the model
+  # searches or fetches without a client round-trip, and the results come back
+  # as `annotations` on the reply rather than as tool calls Echo runs. That's
+  # why they're built here as declarations and never touch `Echo.Agents.Tools`.
   defp tools(params, "openrouter", provider_module, raw_tools) do
-    case raw_tools ++ backend_tools(params["tools"], provider_module) do
+    tool_params = params["tools"] || %{}
+
+    server_tools =
+      [
+        web_search_tool(tool_params, params),
+        web_fetch_tool(tool_params, params)
+      ]
+      |> Enum.reject(&is_nil/1)
+
+    case server_tools ++ raw_tools ++ backend_tools(tool_params, provider_module) do
       [] -> nil
       list -> list
     end
@@ -184,6 +241,38 @@ defmodule EchoWeb.AgentChatController do
   end
 
   defp backend_tools(_tool_params, _provider_module), do: []
+
+  defp web_search_tool(tool_params, params) do
+    if checked?(tool_params["web_search"]) do
+      parameters =
+        %{}
+        |> maybe_put("engine", engine(params["web_search_engine"]))
+        |> maybe_put("max_results", parse_integer(params["web_search_max_results"]))
+
+      server_tool("openrouter:web_search", parameters)
+    end
+  end
+
+  defp web_fetch_tool(tool_params, params) do
+    if checked?(tool_params["web_fetch"]) do
+      parameters =
+        %{}
+        |> maybe_put("engine", engine(params["web_fetch_engine"]))
+        |> maybe_put("max_content_tokens", parse_integer(params["web_fetch_max_content_tokens"]))
+
+      server_tool("openrouter:web_fetch", parameters)
+    end
+  end
+
+  # "auto" is OpenRouter's own default, so leave it out rather than pinning it.
+  defp engine("auto"), do: nil
+  defp engine(value), do: presence(value)
+
+  defp server_tool(type, parameters) when map_size(parameters) == 0, do: %{"type" => type}
+  defp server_tool(type, parameters), do: %{"type" => type, "parameters" => parameters}
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp parse_raw_tools(value) when is_binary(value) do
     case String.trim(value) do
