@@ -6,6 +6,7 @@ defmodule Echo.Agent do
   import Ecto.Query, warn: false
   alias Echo.Repo
   alias Echo.Agent.Message
+  alias Echo.Agent.ConversationRecord
 
   @doc """
   Returns a list of conversations by finding all messages with the role 'system'.
@@ -19,7 +20,11 @@ defmodule Echo.Agent do
   end
 
   @doc """
-  Returns the list of messages for a given session.
+  Returns the list of messages for a given session, oldest first.
+
+  Ordered by `id` rather than `inserted_at`: insertion order is what matters
+  for replaying a conversation, and `id` (an auto-incrementing serial) can't
+  tie the way a timestamp can under back-to-back writes.
 
   ## Examples
 
@@ -29,7 +34,7 @@ defmodule Echo.Agent do
   """
   def list_messages_by_session(session_id) do
     Repo.all(
-      from m in Message, where: m.session_id == ^session_id, order_by: [asc: m.inserted_at]
+      from m in Message, where: m.session_id == ^session_id, order_by: [asc: m.id]
     )
   end
 
@@ -111,5 +116,79 @@ defmodule Echo.Agent do
   """
   def change_message(%Message{} = message, attrs \\ %{}) do
     Message.changeset(message, attrs)
+  end
+
+  @doc """
+  Creates the durable record of a conversation's configuration, plus its one
+  system-prompt message (if a system prompt was given). Both are written in
+  one transaction, since a `ConversationRecord` without its system message
+  (or vice versa) would leave a partially-created conversation behind.
+
+  This is the only place a system-prompt message gets written, so replaying
+  a conversation's history (see `Echo.Agents.ConversationServer.init/1`)
+  never sees it duplicated across restarts.
+
+  `opts` accepts either atom or string keys, matching every existing caller
+  of `Echo.Agents.ConversationManager.start_conversation/1`.
+
+  Returns `{:ok, %ConversationRecord{}}` or `{:error, reason}`.
+  """
+  def create_conversation(opts) do
+    attrs = %{
+      "session_id" => opt(opts, :session_id, "session_id"),
+      "system_prompt" => opt(opts, :system_prompt, "system_prompt"),
+      "temperature" => opt(opts, :temperature, "temperature"),
+      "max_output_tokens" => opt(opts, :max_output_tokens, "max_output_tokens"),
+      "thinking_enabled" => opt(opts, :thinking_enabled, "thinking_enabled"),
+      "thinking_budget" => opt(opts, :thinking_budget, "thinking_budget"),
+      "tools" => opt(opts, :tools, "tools"),
+      "model" => opt(opts, :model, "model"),
+      "response_modalities" => opt(opts, :response_modalities, "response_modalities")
+    }
+
+    Repo.transaction(fn ->
+      with {:ok, record} <-
+             %ConversationRecord{} |> ConversationRecord.changeset(attrs) |> Repo.insert(),
+           :ok <- maybe_store_system_prompt(record) do
+        record
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  @doc """
+  Gets the durable record of a conversation's configuration, or `nil` if none
+  exists (never created, or deleted via `delete_conversation/1`).
+  """
+  def get_conversation(session_id), do: Repo.get(ConversationRecord, session_id)
+
+  @doc """
+  Deletes the durable record of a conversation's configuration. Message
+  history in `ai_messages` is left alone. This is what makes an explicit
+  delete stick against `Echo.Agents.ConversationManager`'s transparent
+  resume-from-DB path — without it, the next message to that id would just
+  rehydrate the "deleted" conversation.
+  """
+  def delete_conversation(session_id) do
+    Repo.delete_all(from c in ConversationRecord, where: c.session_id == ^session_id)
+    :ok
+  end
+
+  defp opt(opts, atom_key, string_key), do: Map.get(opts, atom_key) || Map.get(opts, string_key)
+
+  defp maybe_store_system_prompt(%ConversationRecord{system_prompt: nil}), do: :ok
+
+  defp maybe_store_system_prompt(%ConversationRecord{} = record) do
+    case create_message(%{
+           session_id: record.session_id,
+           role: "system",
+           type: "text",
+           content: record.system_prompt,
+           model: record.model
+         }) do
+      {:ok, _message} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 end

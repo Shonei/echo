@@ -8,28 +8,31 @@
 
   <div class="bg-white rounded-xl shadow-md overflow-hidden">
     <ul role="list" class="divide-y divide-gray-200">
-      <li :for={conversation <- @conversations}>
-        <a href={~p"/ai-messages/#{conversation.session_id}"} class="block hover:bg-gray-50 transition-colors duration-150 p-6">
-          <div class="flex items-center justify-between">
-            <div class="flex flex-col flex-1">
-              <div class="flex items-center">
-                <span class="text-sm font-medium text-blue-600 truncate">Session: {conversation.session_id}</span>
-                <span :if={conversation.model} class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                  {conversation.model}
-                </span>
-              </div>
-              <div class="mt-2 text-sm text-gray-500 line-clamp-2">
-                <pre class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{conversation.content}</pre>
-              </div>
+      <li :for={conversation <- @conversations} class="p-6 hover:bg-gray-50 transition-colors duration-150">
+        <div class="flex items-center justify-between">
+          <div class="flex flex-col flex-1 min-w-0">
+            <div class="flex items-center">
+              <span class="text-sm font-medium text-blue-600 truncate">Session: {conversation.session_id}</span>
+              <span :if={conversation.model} class="ml-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                {conversation.model}
+              </span>
             </div>
-            <div class="ml-4 flex-shrink-0">
-              <.icon name="hero-chevron-right" class="h-5 w-5 text-gray-400" />
+            <div class="mt-2 text-sm text-gray-500 line-clamp-2">
+              <pre class="whitespace-pre-wrap font-sans bg-transparent p-0 m-0 border-0">{conversation.content}</pre>
+            </div>
+            <div class="mt-2 text-xs text-gray-400">
+              Started: {Calendar.strftime(conversation.inserted_at, "%Y-%m-%d %H:%M:%S")}
             </div>
           </div>
-          <div class="mt-2 text-xs text-gray-400">
-            Started: {Calendar.strftime(conversation.inserted_at, "%Y-%m-%d %H:%M:%S")}
+          <div class="ml-4 flex-shrink-0 flex items-center space-x-4">
+            <a href={~p"/agent-chat/#{conversation.session_id}"} class="text-sm font-medium text-blue-600 hover:text-blue-800">
+              Resume Chat
+            </a>
+            <a href={~p"/ai-messages/#{conversation.session_id}"} class="text-gray-400 hover:text-gray-600">
+              <.icon name="hero-chevron-right" class="h-5 w-5" />
+            </a>
           </div>
-        </a>
+        </div>
       </li>
     </ul>
     

@@ -27,8 +27,6 @@ defmodule Echo.Application do
           EchoWeb.Plugs.RateLimit.TableOwner,
           # Auth User GenServer
           Echo.AuthUser,
-          # Gemini API GenServer
-          Echo.Agents.API,
           # AI Conversation Manager Processes (Dynamic)
           {Registry, keys: :unique, name: Echo.Agents.ConversationRegistry},
           {DynamicSupervisor, strategy: :one_for_one, name: Echo.Agents.ConversationSupervisor},

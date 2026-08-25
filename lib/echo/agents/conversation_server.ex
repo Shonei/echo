@@ -43,33 +43,36 @@ defmodule Echo.Agents.ConversationServer do
 
   # --- Callbacks ---
 
+  # The conversation's config and history live durably in Postgres (see
+  # `Echo.Agent.ConversationRecord` and `Echo.Agent.create_conversation/1`) so
+  # this process can be rebuilt after a crash or a redeploy wipes the
+  # registry — `opts` here only ever needs to carry `:id`; everything else is
+  # loaded fresh, which is what makes "create" and "resume" the same path.
   @impl true
   def init(opts) do
     id = Map.get(opts, :id) || Map.get(opts, "id")
 
-    convo = %Conversation{
-      id: id,
-      system_prompt: Map.get(opts, :system_prompt) || Map.get(opts, "system_prompt"),
-      temperature: Map.get(opts, :temperature) || Map.get(opts, "temperature") || 0.7,
-      max_output_tokens: Map.get(opts, :max_output_tokens) || Map.get(opts, "max_output_tokens"),
-      thinking_enabled:
-        Map.get(opts, :thinking_enabled, false) || Map.get(opts, "thinking_enabled", false),
-      thinking_budget: Map.get(opts, :thinking_budget) || Map.get(opts, "thinking_budget"),
-      tools: Map.get(opts, :tools) || Map.get(opts, "tools"),
-      model: Map.get(opts, :model) || Map.get(opts, "model"),
-      response_modalities:
-        Map.get(opts, :response_modalities) || Map.get(opts, "response_modalities"),
-      messages: []
-    }
+    case Echo.Agent.get_conversation(id) do
+      nil ->
+        {:stop, :conversation_not_found}
 
-    # Only tools this conversation actually declared may be run server-side.
-    convo = %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}
+      record ->
+        convo = %Conversation{
+          id: id,
+          system_prompt: record.system_prompt,
+          temperature: record.temperature || 0.7,
+          max_output_tokens: record.max_output_tokens,
+          thinking_enabled: record.thinking_enabled || false,
+          thinking_budget: record.thinking_budget,
+          tools: record.tools,
+          model: record.model,
+          response_modalities: record.response_modalities,
+          messages: id |> Echo.Agent.list_messages_by_session() |> replay_into_turns()
+        }
 
-    if convo.system_prompt do
-      async_store_parts(id, "system", [%{"text" => convo.system_prompt}], convo.model)
+        # Only tools this conversation actually declared may be run server-side.
+        {:ok, %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}}
     end
-
-    {:ok, convo}
   end
 
   @impl true
@@ -87,9 +90,6 @@ defmodule Echo.Agents.ConversationServer do
     user_msg = %{"role" => "user", "parts" => parts}
     new_messages = convo.messages ++ [user_msg]
 
-    # Fire and forget DB storage for the user message
-    async_store_parts(convo.id, "user", parts, convo.model)
-
     # Prepare API options
     api_opts = [
       system_prompt: convo.system_prompt,
@@ -102,53 +102,47 @@ defmodule Echo.Agents.ConversationServer do
       model: convo.model
     ]
 
-    case run_turn(new_messages, api_opts, convo, [], 0) do
-      {:ok, messages, reply_parts, metadata} ->
-        {:reply, {:ok, reply_parts, metadata}, %{convo | messages: messages}}
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, convo}
+    # Persisted before the turn runs: a resume must be able to see the user's
+    # message even if the model call itself never completes.
+    with :ok <- store_parts(convo.id, "user", parts, convo.model),
+         {:ok, messages, reply_parts, metadata} <- run_turn(new_messages, api_opts, convo, [], 0) do
+      {:reply, {:ok, reply_parts, metadata}, %{convo | messages: messages}}
+    else
+      {:error, reason} -> {:reply, {:error, reason}, convo}
     end
   end
 
   # Calls Gemini, and if it asked for a tool Echo owns, runs the tool and calls
   # again with the result. Client-side tools (the blog editor's `edit_text`, for
   # instance) are not in the registry, so they simply come back to the caller.
+  # Every turn is persisted before the next Gemini call is made, so a resumed
+  # conversation always reflects exactly what the caller already saw.
   defp run_turn(messages, api_opts, convo, acc_parts, depth) do
-    case Echo.Agents.API.generate_content(messages, api_opts) do
-      {:ok, response} ->
-        case extract_parts(response) do
-          {:ok, ai_parts, metadata} ->
-            messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
-            async_store_parts(convo.id, "model", ai_parts, convo.model, metadata)
+    with {:ok, response} <- Echo.Agents.API.generate_content(messages, api_opts),
+         {:ok, ai_parts, metadata} <- extract_parts(response),
+         messages = messages ++ [%{"role" => "model", "parts" => ai_parts}],
+         :ok <- store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
+      acc_parts = acc_parts ++ ai_parts
 
-            acc_parts = acc_parts ++ ai_parts
+      case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
+        [] ->
+          {:ok, messages, acc_parts, metadata}
 
-            case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
-              [] ->
-                {:ok, messages, acc_parts, metadata}
+        calls when depth >= @max_tool_iterations ->
+          Logger.warning(
+            "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
+          )
 
-              calls when depth >= @max_tool_iterations ->
-                Logger.warning(
-                  "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
-                )
+          {:ok, messages, acc_parts, metadata}
 
-                {:ok, messages, acc_parts, metadata}
+        calls ->
+          response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
 
-              calls ->
-                response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
-                async_store_parts(convo.id, "user", response_parts, convo.model)
-
-                messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
-                run_turn(messages, api_opts, convo, acc_parts, depth + 1)
-            end
-
-          {:error, reason} ->
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+          with :ok <- store_parts(convo.id, "user", response_parts, convo.model) do
+            messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
+            run_turn(messages, api_opts, convo, acc_parts, depth + 1)
+          end
+      end
     end
   end
 
@@ -195,33 +189,49 @@ defmodule Echo.Agents.ConversationServer do
     {:error, :unexpected_response_format}
   end
 
-  # Log silently by rescuing errors
-  defp async_store_parts(session_id, role, parts, model, metadata \\ %{}) do
-    Task.start(fn ->
-      Enum.each(parts, fn part ->
-        attrs =
-          part_to_attrs(part)
-          |> Map.merge(%{
-            session_id: session_id,
-            role: role,
-            model: model,
-            metadata: metadata
-          })
+  # Written synchronously, before the caller ever sees a reply: a resumed
+  # conversation is only as trustworthy as what's actually landed in
+  # Postgres, so a write failure here fails the turn rather than being
+  # logged and silently dropped.
+  defp store_parts(session_id, role, parts, model, metadata \\ %{}) do
+    Enum.reduce_while(parts, :ok, fn part, :ok ->
+      attrs =
+        part_to_attrs(part)
+        |> Map.merge(%{session_id: session_id, role: role, model: model, metadata: metadata})
 
-        try do
-          case Echo.Agent.create_message(attrs) do
-            {:ok, _} ->
-              :ok
+      case Echo.Agent.create_message(attrs) do
+        {:ok, _message} ->
+          {:cont, :ok}
 
-            {:error, changeset} ->
-              Logger.warning("Failed to store async ai_message: #{inspect(changeset.errors)}")
-          end
-        rescue
-          e ->
-            Logger.error("Exception storing async ai_message: #{inspect(e)}")
-        end
-      end)
+        {:error, changeset} ->
+          Logger.error("Failed to persist ai_message: #{inspect(changeset.errors)}")
+          {:halt, {:error, {:persistence_failed, changeset}}}
+      end
     end)
+  end
+
+  # Inverse of `part_to_attrs/1`, used to rebuild `messages` from stored rows
+  # when a conversation is (re)hydrated in `init/1`.
+  defp replay_into_turns(rows) do
+    rows
+    |> Enum.reject(&(&1.role == "system"))
+    |> Enum.chunk_by(& &1.role)
+    |> Enum.map(fn [%{role: role} | _] = chunk ->
+      %{"role" => role, "parts" => Enum.map(chunk, &row_to_part/1)}
+    end)
+  end
+
+  defp row_to_part(%{type: "text", content: text}), do: %{"text" => text}
+  defp row_to_part(%{type: "functionCall", payload: call}), do: %{"functionCall" => call}
+  defp row_to_part(%{type: "functionResponse", payload: resp}), do: %{"functionResponse" => resp}
+  defp row_to_part(%{type: "toolCall", payload: part}), do: part
+  defp row_to_part(%{type: "toolResponse", payload: part}), do: part
+  defp row_to_part(%{type: "document", payload: data}), do: %{"inlineData" => data}
+  defp row_to_part(%{type: "unknown", payload: part}), do: part
+
+  defp row_to_part(row) do
+    Logger.warning("Unrecognized stored message type while replaying history: #{inspect(row.type)}")
+    %{"text" => row.content || ""}
   end
 
   defp part_to_attrs(%{"text" => text}) do

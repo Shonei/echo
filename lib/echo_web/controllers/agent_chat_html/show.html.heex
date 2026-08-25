@@ -4,9 +4,14 @@
       <h1 class="text-2xl font-bold text-gray-900">Agent Conversation</h1>
       <p class="text-sm text-gray-500 mt-1">Session ID: <span id="session-id">{@session_id}</span></p>
     </div>
-    <a href={~p"/agent-chat/new"} class="text-blue-600 hover:text-blue-800 flex items-center">
-      <.icon name="hero-plus" class="w-4 h-4 mr-2" /> New Agent
-    </a>
+    <div class="flex items-center space-x-4">
+      <a href={~p"/ai-messages"} class="text-blue-600 hover:text-blue-800 flex items-center">
+        <.icon name="hero-list-bullet" class="w-4 h-4 mr-2" /> All Conversations
+      </a>
+      <a href={~p"/agent-chat/new"} class="text-blue-600 hover:text-blue-800 flex items-center">
+        <.icon name="hero-plus" class="w-4 h-4 mr-2" /> New Agent
+      </a>
+    </div>
   </div>
 
   <div id="messages-container" class="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4 space-y-6">
