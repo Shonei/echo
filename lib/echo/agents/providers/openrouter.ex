@@ -233,11 +233,12 @@ defmodule Echo.Agents.Providers.OpenRouter do
   # A canonical turn can hold both tool results and ordinary content, but
   # OpenRouter wants every tool result as its own `role: "tool"` message, so
   # they're split out rather than merged into the turn's message.
-  defp turn_to_messages(%{"role" => role, "parts" => parts}) when is_list(parts) do
+  defp turn_to_messages(%{"role" => role, "parts" => parts} = turn) when is_list(parts) do
     {tool_parts, content_parts} =
       Enum.split_with(parts, &match?(%{"functionResponse" => _}, &1))
 
-    Enum.map(tool_parts, &tool_message/1) ++ content_message(role, content_parts)
+    Enum.map(tool_parts, &tool_message/1) ++
+      content_message(role, content_parts, Map.get(turn, "metadata", %{}))
   end
 
   defp turn_to_messages(_), do: []
@@ -253,9 +254,9 @@ defmodule Echo.Agents.Providers.OpenRouter do
     }
   end
 
-  defp content_message(_role, []), do: []
+  defp content_message(_role, [], _metadata), do: []
 
-  defp content_message(role, parts) do
+  defp content_message(role, parts, metadata) do
     text =
       parts
       |> Enum.filter(&match?(%{"text" => _}, &1))
@@ -266,13 +267,25 @@ defmodule Echo.Agents.Providers.OpenRouter do
       |> Enum.filter(&match?(%{"functionCall" => _}, &1))
       |> Enum.map(&to_tool_call/1)
 
-    message = %{"role" => wire_role(role), "content" => content_or_nil(text, tool_calls)}
+    wire_role = wire_role(role)
+
+    message =
+      %{"role" => wire_role, "content" => content_or_nil(text, tool_calls)}
+      |> maybe_add_reasoning(wire_role, metadata)
 
     case tool_calls do
       [] -> [message]
       calls -> [Map.put(message, "tool_calls", calls)]
     end
   end
+
+  defp maybe_add_reasoning(message, "assistant", metadata) when is_map(metadata) do
+    message
+    |> maybe_put("reasoning_details", metadata["reasoning_details"])
+    |> maybe_put("reasoning", metadata["reasoning"])
+  end
+
+  defp maybe_add_reasoning(message, _role, _metadata), do: message
 
   # An assistant turn that is nothing but tool calls carries no content; the
   # OpenAI shape spells that `null`, not `""`.
@@ -310,11 +323,16 @@ defmodule Echo.Agents.Providers.OpenRouter do
     message = Map.get(choice, "message") || %{}
     finish_reason = Map.get(choice, "finish_reason")
 
-    parts = text_parts(message["content"]) ++ tool_call_parts(message["tool_calls"])
+    parts =
+      text_parts(message["content"]) ++
+        refusal_parts(message["refusal"]) ++ tool_call_parts(message["tool_calls"])
 
     metadata =
       %{}
       |> maybe_put("annotations", message["annotations"])
+      |> maybe_put("reasoning_details", message["reasoning_details"])
+      |> maybe_put("reasoning", message["reasoning"])
+      |> maybe_put("refusal", message["refusal"])
       |> maybe_put("usage", Map.get(body, "usage"))
 
     if parts == [] and finish_reason not in @clean_finishes do
@@ -338,6 +356,11 @@ defmodule Echo.Agents.Providers.OpenRouter do
 
   defp text_parts(content) when is_binary(content) and content != "", do: [%{"text" => content}]
   defp text_parts(_), do: []
+
+  defp refusal_parts(refusal) when is_binary(refusal) and refusal != "",
+    do: [%{"text" => refusal}]
+
+  defp refusal_parts(_), do: []
 
   defp tool_call_parts(calls) when is_list(calls) do
     Enum.flat_map(calls, fn

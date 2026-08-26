@@ -150,7 +150,11 @@ defmodule Echo.Agents.ConversationServer do
   defp run_turn(messages, api_opts, convo, acc_parts, depth) do
     case convo.provider.generate_content(messages, api_opts) do
       {:ok, %{parts: ai_parts, metadata: metadata}} ->
-        model_messages = messages ++ [%{"role" => "model", "parts" => ai_parts}]
+        model_turn =
+          %{"role" => "model", "parts" => ai_parts}
+          |> maybe_put_turn_metadata(metadata)
+
+        model_messages = messages ++ [model_turn]
 
         case store_parts(convo.id, "model", ai_parts, convo.model, metadata) do
           :ok ->
@@ -241,11 +245,31 @@ defmodule Echo.Agents.ConversationServer do
     |> Enum.chunk_by(& &1.role)
     |> Enum.map(fn [%{role: role} | _] = chunk ->
       %{"role" => role, "parts" => Enum.map(chunk, &row_to_part/1)}
+      |> maybe_put_turn_metadata(turn_metadata(chunk))
     end)
   end
 
+  defp turn_metadata(rows) do
+    Enum.find_value(rows, %{}, fn row ->
+      if is_map(row.metadata) and map_size(row.metadata) > 0, do: row.metadata
+    end)
+  end
+
+  defp maybe_put_turn_metadata(turn, metadata)
+       when is_map(metadata) and map_size(metadata) > 0,
+       do: Map.put(turn, "metadata", metadata)
+
+  defp maybe_put_turn_metadata(turn, _metadata), do: turn
+
+  @function_call_part_fields ~w(thought thoughtSignature)
+
   defp row_to_part(%{type: "text", content: text}), do: %{"text" => text}
-  defp row_to_part(%{type: "functionCall", payload: call}), do: %{"functionCall" => call}
+
+  defp row_to_part(%{type: "functionCall", payload: call}) do
+    call_part = %{"functionCall" => Map.drop(call, @function_call_part_fields)}
+    copy_present_fields(call, call_part, @function_call_part_fields)
+  end
+
   defp row_to_part(%{type: "functionResponse", payload: resp}), do: %{"functionResponse" => resp}
   defp row_to_part(%{type: "toolCall", payload: part}), do: part
   defp row_to_part(%{type: "toolResponse", payload: part}), do: part
@@ -264,8 +288,9 @@ defmodule Echo.Agents.ConversationServer do
     %{type: "text", content: text}
   end
 
-  defp part_to_attrs(%{"functionCall" => call}) do
-    %{type: "functionCall", payload: call}
+  defp part_to_attrs(%{"functionCall" => call} = part) do
+    payload = copy_present_fields(part, call, @function_call_part_fields)
+    %{type: "functionCall", payload: payload}
   end
 
   defp part_to_attrs(%{"functionResponse" => resp}) do
@@ -286,5 +311,11 @@ defmodule Echo.Agents.ConversationServer do
 
   defp part_to_attrs(part) do
     %{type: "unknown", payload: part}
+  end
+
+  defp copy_present_fields(source, target, fields) do
+    Enum.reduce(fields, target, fn field, acc ->
+      if Map.has_key?(source, field), do: Map.put(acc, field, source[field]), else: acc
+    end)
   end
 end

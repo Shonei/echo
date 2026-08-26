@@ -101,6 +101,37 @@ defmodule Echo.Agents.Providers.GeminiTest do
       assert call == %{"name" => "http_request", "args" => %{}}
       assert response == %{"name" => "http_request", "response" => %{}}
     end
+
+    test "preserves Gemini's thought signature on a function call" do
+      contents = [
+        %{
+          "role" => "model",
+          "parts" => [
+            %{
+              "functionCall" => %{
+                "name" => "http_request",
+                "args" => %{},
+                "id" => "call_abc"
+              },
+              "thoughtSignature" => "opaque-signature-from-gemini"
+            }
+          ]
+        }
+      ]
+
+      payload = Gemini.build_payload(contents, [])
+
+      assert [
+               %{
+                 "parts" => [
+                   %{
+                     "functionCall" => %{"name" => "http_request", "args" => %{}},
+                     "thoughtSignature" => "opaque-signature-from-gemini"
+                   }
+                 ]
+               }
+             ] = payload.contents
+    end
   end
 
   describe "build_function_tools/1" do

@@ -7,7 +7,6 @@ defmodule Echo.AxiomLogger do
   """
 
   use GenServer
-  require Logger
 
   defstruct [
     :name,

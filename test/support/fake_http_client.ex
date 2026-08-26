@@ -14,8 +14,8 @@ defmodule Echo.FakeHTTPClient do
   should `reset/0` in setup.
   """
 
-  @stub_key {__MODULE__, :stubs}
-  @requests_key {__MODULE__, :requests}
+  @stub_key :fake_http_client_stubs
+  @requests_key :fake_http_client_requests
 
   @doc """
   Clears stubs and recorded requests. Call in `setup`.

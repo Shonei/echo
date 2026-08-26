@@ -4,22 +4,18 @@ defmodule EchoWeb.ChatChannel do
   alias Echo.Chat
 
   @impl true
-  def join("chat:" <> room, payload, socket) do
-    if authorized?(payload) do
-      # Subscribe to the room's PubSub topic
-      # PubSub.subscribe(Echo.PubSub, "chat:#{room}")
+  def join("chat:" <> room, _payload, socket) do
+    # Subscribe to the room's PubSub topic
+    # PubSub.subscribe(Echo.PubSub, "chat:#{room}")
 
-      # Get recent messages for the room
-      messages = Chat.list_messages(room, 50)
+    # Get recent messages for the room
+    messages = Chat.list_messages(room, 50)
 
-      # Assign room to socket
-      socket = assign(socket, :room, room)
+    # Assign room to socket
+    socket = assign(socket, :room, room)
 
-      # Send recent messages to the newly joined user
-      {:ok, %{messages: format_messages(messages)}, socket}
-    else
-      {:error, %{reason: "unauthorized"}}
-    end
+    # Send recent messages to the newly joined user
+    {:ok, %{messages: format_messages(messages)}, socket}
   end
 
   # Channels can be used in a request/response fashion
@@ -67,13 +63,6 @@ defmodule EchoWeb.ChatChannel do
     IO.puts("Received outside message: #{inspect(message)}")
     push(socket, "new_message", %{message: format_message(message)})
     {:noreply, socket}
-  end
-
-  # Add authorization logic here
-  defp authorized?(_payload) do
-    # For now, allow all connections
-    # In a real app, you'd check authentication tokens, etc.
-    true
   end
 
   defp extract_username(user_id) do

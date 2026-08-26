@@ -82,6 +82,35 @@ defmodule Echo.Agents.Providers.OpenRouterTest do
              ] = payload["messages"]
     end
 
+    test "returns reasoning details unchanged on an assistant tool-call message" do
+      reasoning_details = [
+        %{
+          "type" => "reasoning.encrypted",
+          "data" => "opaque-reasoning-from-openrouter"
+        }
+      ]
+
+      turns = [
+        %{
+          "role" => "model",
+          "parts" => [
+            %{
+              "functionCall" => %{
+                "name" => "http_request",
+                "args" => %{},
+                "id" => "call_abc"
+              }
+            }
+          ],
+          "metadata" => %{"reasoning_details" => reasoning_details}
+        }
+      ]
+
+      payload = OpenRouter.build_payload(turns, model: "anthropic/claude-sonnet-4")
+
+      assert [%{"reasoning_details" => ^reasoning_details}] = payload["messages"]
+    end
+
     test "falls back to the tool name when a response carries no id" do
       turns = [
         %{
@@ -187,6 +216,53 @@ defmodule Echo.Agents.Providers.OpenRouterTest do
       # whatever arrives is what gets persisted.
       assert metadata["annotations"] == annotations
       assert metadata["usage"] == %{"total_tokens" => 42, "prompt_tokens" => 10}
+    end
+
+    test "preserves reasoning details in metadata for the next model call" do
+      reasoning_details = [
+        %{
+          "type" => "reasoning.encrypted",
+          "data" => "opaque-reasoning-from-openrouter"
+        }
+      ]
+
+      body = %{
+        "choices" => [
+          %{
+            "message" => %{
+              "content" => nil,
+              "reasoning_details" => reasoning_details,
+              "tool_calls" => [
+                %{
+                  "id" => "call_abc",
+                  "function" => %{"name" => "http_request", "arguments" => "{}"}
+                }
+              ]
+            },
+            "finish_reason" => "tool_calls"
+          }
+        ]
+      }
+
+      assert {:ok, %{metadata: %{"reasoning_details" => ^reasoning_details}}} =
+               OpenRouter.extract_parts(body)
+    end
+
+    test "returns a refusal as text instead of a successful empty response" do
+      body = %{
+        "choices" => [
+          %{
+            "message" => %{"content" => nil, "refusal" => "I cannot help with that."},
+            "finish_reason" => "stop"
+          }
+        ]
+      }
+
+      assert {:ok,
+              %{
+                parts: [%{"text" => "I cannot help with that."}],
+                metadata: %{"refusal" => "I cannot help with that."}
+              }} = OpenRouter.extract_parts(body)
     end
 
     test "keeps a partial reply when the model was cut off mid-answer" do

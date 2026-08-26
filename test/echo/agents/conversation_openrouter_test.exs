@@ -157,6 +157,62 @@ defmodule Echo.Agents.ConversationOpenRouterTest do
       response_row = Enum.at(rows, 2)
       assert response_row.payload["id"] == "call_abc"
     end
+
+    test "restores reasoning details from Postgres for a later model call" do
+      reasoning_details = [
+        %{
+          "type" => "reasoning.encrypted",
+          "data" => "opaque-reasoning-from-openrouter"
+        }
+      ]
+
+      tool_call = %{
+        "choices" => [
+          %{
+            "message" => %{
+              "content" => nil,
+              "reasoning_details" => reasoning_details,
+              "tool_calls" => [
+                %{
+                  "id" => "call_abc",
+                  "type" => "function",
+                  "function" => %{"name" => "edit_text", "arguments" => "{}"}
+                }
+              ]
+            },
+            "finish_reason" => "tool_calls"
+          }
+        ]
+      }
+
+      FakeHTTPClient.stub(tool_call)
+
+      {:ok, id} =
+        ConversationManager.start_conversation(%{
+          "provider" => "openrouter",
+          "model" => "anthropic/claude-sonnet-4"
+        })
+
+      assert {:ok, [%{"functionCall" => _}], %{"reasoning_details" => ^reasoning_details}} =
+               ConversationManager.message(id, "edit this")
+
+      assert [_user_row, model_row] = Echo.Agent.list_messages_by_session(id)
+      assert model_row.metadata["reasoning_details"] == reasoning_details
+
+      [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+      GenServer.stop(pid, :normal)
+      wait_until_deregistered(id)
+
+      FakeHTTPClient.stub(text_reply("done"))
+
+      assert {:ok, [%{"text" => "done"}], _metadata} =
+               ConversationManager.message(id, "continue")
+
+      assert Enum.any?(FakeHTTPClient.last_request().body["messages"], fn message ->
+               message["role"] == "assistant" and
+                 message["reasoning_details"] == reasoning_details
+             end)
+    end
   end
 
   describe "a conversation with no model" do
@@ -165,6 +221,20 @@ defmodule Echo.Agents.ConversationOpenRouterTest do
 
       assert ConversationManager.message(id, "hi") == {:error, :missing_model}
       assert FakeHTTPClient.requests() == []
+    end
+  end
+
+  defp wait_until_deregistered(id, attempts \\ 50) do
+    case Registry.lookup(Echo.Agents.ConversationRegistry, id) do
+      [] ->
+        :ok
+
+      _ when attempts > 0 ->
+        Process.sleep(5)
+        wait_until_deregistered(id, attempts - 1)
+
+      _ ->
+        flunk("conversation #{id} was never deregistered")
     end
   end
 end

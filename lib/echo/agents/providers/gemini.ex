@@ -226,8 +226,11 @@ defmodule Echo.Agents.Providers.Gemini do
   # Canonical parts can carry keys another provider needs and Gemini rejects:
   # OpenRouter pairs a call with its response by an `"id"` that has no place in
   # a Gemini request. Take only the keys Gemini's own schema defines.
-  defp format_part(%{"functionCall" => call}),
-    do: %{"functionCall" => Map.take(call, ["name", "args"])}
+  defp format_part(%{"functionCall" => call} = part) do
+    part
+    |> Map.take(["functionCall", "thought", "thoughtSignature"])
+    |> Map.put("functionCall", Map.take(call, ["name", "args"]))
+  end
 
   defp format_part(%{"functionResponse" => resp}),
     do: %{"functionResponse" => Map.take(resp, ["name", "response"])}
