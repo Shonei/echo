@@ -27,7 +27,7 @@ defmodule EchoWeb.UserSocket do
   def connect(params, socket, _connect_info) do
     # For now, we'll allow anonymous connections
     # In a real app, you'd want to authenticate users here
-    user_id = params["user_id"] || "anonymous_#{:rand.uniform(1000000)}"
+    user_id = params["user_id"] || "anonymous_#{:rand.uniform(1_000_000)}"
     {:ok, assign(socket, :user_id, user_id)}
   end
 

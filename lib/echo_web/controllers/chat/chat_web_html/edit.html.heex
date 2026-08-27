@@ -13,7 +13,13 @@
     <:subtitle>Update the details of the chat room</:subtitle>
   </.header>
 
-  <.simple_form :let={f} for={@changeset} action={~p"/chat/rooms/#{@chat_room.id}"} method="put" class="mt-8">
+  <.simple_form
+    :let={f}
+    for={@changeset}
+    action={~p"/chat/rooms/#{@chat_room.id}"}
+    method="put"
+    class="mt-8"
+  >
     <.error :if={@changeset.action}>
       Oops, something went wrong! Please check the errors below.
     </.error>
@@ -37,4 +43,3 @@
     </:actions>
   </.simple_form>
 </div>
-
