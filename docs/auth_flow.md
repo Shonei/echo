@@ -6,11 +6,13 @@ This document describes the simple authentication mechanism implemented for the 
 
 The authentication relies on a single user account configured via environment variables.
 
--   `BLOGS_USERNAME`: The username for the single user (e.g., "admin").
--   `BLOGS_PASSWORD`: The password for the single user.
--   `BLOGS_AUTH_SECRET`: The secret key for signing JWT tokens.
+-   `USERNAME`: The username for the single user (e.g., "admin").
+-   `PASSWORD`: The password for the single user.
+-   `JWT_SECRET`: The secret key for signing JWT tokens.
 
-**All environment variables must be set for authentication to work securely.**
+**All three must be set**, or `config :echo, :auth` is never populated and `POST /api/v1/login` returns `500 {"error": "Auth not configured"}`. The same credentials back the HTTP Basic Auth on the browser routes.
+
+(These were named `BLOGS_USERNAME` / `BLOGS_PASSWORD` / `BLOGS_AUTH_SECRET` before commit `dd96f93`.)
 
 ## Login
 
@@ -61,15 +63,23 @@ The following operations require authentication:
 -   `POST /api/v1/blogs` (Create Blog)
 -   `PUT /api/v1/blogs/:id` (Update Blog)
 -   `DELETE /api/v1/blogs/:id` (Delete Blog)
--   `PUT /api/v1/blogs/:id/content` (Update Blog Content)
+-   `PUT /api/v1/blogs/:blog_id/content` (Update Blog Content)
+-   `GET /api/v1/blogs/:blog_id/revisions` (List Revisions)
+-   `GET /api/v1/assets` (List Assets)
 -   `PUT /api/v1/assets/*path` (Upload Asset)
+-   `DELETE /api/v1/assets/*path` (Delete Asset)
+-   All of `/api/v1/ai/*` (see `AI_API.md`)
 
-Read operations (GET) are public.
+**Not all reads are public.** `GET /api/v1/blogs` and `GET /api/v1/blogs/:id` are the only endpoints that work without a token, and they reveal more with one: anonymous callers see public blogs only. Revision and asset listings require auth like any write.
+
+`GET /api/v1/assets/*path` (serving an asset's bytes) is public — it runs on its own `:assets` pipeline.
 
 ## Implementation Details
 
--   **Token Generation**: Uses `Joken` with HS256 algorithm.
--   **Session Management**:
+-   **Token Generation**: Uses `Joken` with HS256 algorithm. TTL is 8 hours, set by `@ttl` in `EchoWeb.LoginController`.
+-   **Token handling**:
     -   On login, the token and its expiry are stored in an `Echo.AuthUser` GenServer.
-    -   The `ExtractToken` plug extracts the token from the header and puts it into the Phoenix session.
-    -   The `ValidateToken` plug checks if the token exists in the session and validates it against the GenServer state (checking expiry).
+    -   `EchoWeb.Plugs.BearerToken` reads the token from the `Authorization` header on **every** request and validates it against the GenServer state (checking expiry).
+    -   The token is **deliberately never written to the Phoenix session**. Promoting it to a cookie would turn a short-lived API credential into a long-lived browser one, readable by anyone who can read the signed-but-unencrypted session cookie. Do not reintroduce that.
+    -   `EchoWeb.Plugs.ValidateToken` requires a valid token and halts with `401 {"error": "Unauthorized"}` otherwise.
+    -   `EchoWeb.Plugs.MaybeAuthenticate` never halts; it assigns `conn.assigns.authenticated?` so an endpoint can show more to an editor than to an anonymous reader.

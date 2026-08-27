@@ -32,10 +32,6 @@ end
 config :logger, :default_handler,
   formatter: LoggerJSON.Formatters.Basic.new(metadata: {:all_except, [:file]})
 
-if audit_password = System.get_env("AUDIT_PASSWORD") do
-  config :echo, :audit_password, audit_password
-end
-
 # Auth configuration
 # Only load if username and password are provided
 username = System.get_env("USERNAME")

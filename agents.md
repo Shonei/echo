@@ -4,11 +4,10 @@
 
 Echo is a **Phoenix 1.8** web application built on **Elixir ~> 1.19** with a **PostgreSQL** database (via `postgrex`). It is a multi-feature platform providing:
 
-- **Real-time Chat** — WebSocket channels (`Phoenix.PubSub`) with AI-powered bot mentions
+- **Real-time Chat** — WebSocket channels (`Phoenix.PubSub`) with rooms and message history
 - **Blog CMS** — CRUD API with revisions, slugs, and content versioning
-- **AI Conversation Engine** — Stateful GenServer-backed conversations with the Gemini API, with server-executed tools (`Echo.Agents.Tools`) and client-executed tools (declared by the caller, returned for it to run)
+- **AI Conversation Engine** — GenServer-backed conversations, durable and resumable from Postgres, over a pluggable provider (Gemini by default, OpenRouter available), with server-executed tools (`Echo.Agents.Tools`) and client-executed tools (declared by the caller, returned for it to run)
 - **Asset Storage** — S3-compatible file uploads with rate limiting and thumbnail processing (via `vix`/libvips)
-- **Audit Logging** — Session-based event tracking with bearer-token auth
 - **Request Echoing** — HTTP request capture and replay for debugging
 - **Axiom Logging** — Optional structured log shipping to Axiom in production
 
@@ -33,23 +32,27 @@ The app boots the following supervised children:
 | `Echo.Requests.RequestCleanupJob` | Periodic cleanup of old HTTP requests |
 | `EchoWeb.Plugs.RateLimit.TableOwner` | ETS owner for rate limit counters |
 | `Echo.AuthUser` | Single-user auth state (GenServer) |
-| `Echo.Agents.API` | Gemini API client (GenServer) |
 | `Echo.Agents.ConversationRegistry` | Registry for conversation processes |
 | `Echo.Agents.ConversationSupervisor` | DynamicSupervisor for conversation GenServers |
 | `Finch` | HTTP client pool |
 | `EchoWeb.Endpoint` | Phoenix HTTP/WS endpoint |
 | `Echo.AxiomLogger` (conditional) | Axiom log shipping in prod |
 
+Model providers are deliberately *not* in this tree. `Echo.Agents.Providers.Gemini`
+and `Echo.Agents.Providers.OpenRouter` are plain modules holding no process and no
+state: each call reads config fresh and makes its request on the caller's process,
+so concurrent conversations run in parallel instead of queueing behind one shared
+GenServer.
+
 ### Business Logic Contexts (under `lib/echo/`)
 
 | Context | Modules | Responsibility |
 |---|---|---|
-| `Echo.Agent` | `Echo.Agent`, `Echo.Agent.Message` | AI message persistence (Ecto schema + CRUD) |
-| `Echo.Agents` | `Echo.Agents.API`, `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Presets`, `Echo.Agents.Tools`, `Echo.Agents.Tools.HttpRequest` | Gemini API client, per-conversation GenServers, process lifecycle, pre-configured editor/photographer prompts and tools, server-executed tools |
+| `Echo.Agent` | `Echo.Agent`, `Echo.Agent.Message`, `Echo.Agent.ConversationRecord` | Durable conversation state: message rows (`ai_messages`) and per-conversation config (`ai_conversations`) |
+| `Echo.Agents` | `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Provider`, `Echo.Agents.Providers`, `Echo.Agents.Providers.Gemini`, `Echo.Agents.Providers.OpenRouter`, `Echo.Agents.Presets`, `Echo.Agents.Tools`, `Echo.Agents.Tools.HttpRequest` | Per-conversation GenServers, process lifecycle, the provider behaviour and its backends, pre-configured editor/photographer prompts and tools, server-executed tools |
 | `Echo.Chat` | `Echo.Chat`, `Echo.Chat.Message` | Chat message CRUD |
 | `Echo.ChatRooms` | `Echo.ChatRooms`, `Echo.ChatRooms.ChatRoom` | Chat room management |
 | `Echo.Content` | `Echo.Content`, `Echo.Content.Blog`, `Echo.Content.Revision` | Blog + revision CRUD |
-| `Echo.Audit` | `Echo.Audit.*` | Audit session/event tracking |
 | `Echo.Requests` | `Echo.Requests`, `Echo.Requests.Request`, `Echo.RequestCache`, `Echo.Requests.RequestCleanupJob` | HTTP request echo + cleanup |
 | `Echo.Storage` | `Echo.Storage.Assets`, `Echo.Storage.Asset`, `Echo.Storage.S3Client` | S3-compatible asset storage |
 | `Echo.AuthUser` | `Echo.AuthUser` | Single-user auth GenServer |
@@ -57,17 +60,16 @@ The app boots the following supervised children:
 
 ### Web Layer (under `lib/echo_web/`)
 
-- **Router** (`EchoWeb.Router`) — Defines pipelines: `:browser` (Basic Auth + sessions), `:api` (JSON), `:api_auth` (JWT token extraction/validation), `:echo` (catch-all echo), `:asset_upload` (rate limited)
+- **Router** (`EchoWeb.Router`) — Defines pipelines: `:browser` (Basic Auth + sessions), `:api` (JSON), `:api_auth` (JWT extraction/validation), `:api_maybe_auth` (optional auth, for public-or-private reads), `:basic_auth` (Basic Auth on a JSON route), `:echo` (catch-all echo), `:assets` (asset reads), `:asset_upload` / `:rate_limit_uploads` (uploads, rate limited)
 - **Channels** — `EchoWeb.ChatChannel` handles real-time chat via `chat:<room>` topics
-- **Controllers** — Standard Phoenix controllers for each feature (Chat, Blog, AI Conversation, Assets, Audit, Requests, Login, Agent Chat)
-- **Plugs** — `AcceptAny`, `AuditAuth`, `ExtractToken`, `ValidateToken`, `RateLimit`
+- **Controllers** — Standard Phoenix controllers for each feature (Chat, Blog, AI Conversation, Assets, Requests, Login, Agent Chat)
+- **Plugs** — `AcceptAny`, `BearerToken`, `ValidateToken`, `MaybeAuthenticate`, `CacheRawBody`, `RateLimit`
 - **Components** — Phoenix components + HEEx templates (Tailwind CSS v3.4)
 
 ### Authentication
 
 - **Browser routes** — HTTP Basic Auth (configured via `USERNAME`/`PASSWORD` env vars)
-- **API routes** — JWT bearer tokens via `POST /api/v1/login`, validated by `ExtractToken` + `ValidateToken` plugs against the `Echo.AuthUser` GenServer
-- **Audit routes** — Separate bearer token (`AUDIT_PASSWORD`)
+- **API routes** — JWT bearer tokens via `POST /api/v1/login`, validated by `BearerToken` + `ValidateToken` plugs against the `Echo.AuthUser` GenServer
 
 ### Frontend
 
@@ -82,7 +84,60 @@ The app boots the following supervised children:
 
 ### AI Conversation System
 
-Each conversation is a **GenServer** (`Echo.Agents.ConversationServer`) registered in `Echo.Agents.ConversationRegistry` and supervised by `Echo.Agents.ConversationSupervisor` (a `DynamicSupervisor`). Conversations hold message history in process state and interact with the Gemini API through `Echo.Agents.API`. Messages are asynchronously persisted to the database via fire-and-forget `Task.start/1`.
+Each conversation is a **GenServer** (`Echo.Agents.ConversationServer`) registered by id in
+`Echo.Agents.ConversationRegistry` and supervised by `Echo.Agents.ConversationSupervisor`
+(a `DynamicSupervisor`). `Echo.Agents.ConversationManager` is the API boundary — nothing
+outside `Echo.Agents` should touch the registry or the supervisor directly.
+
+**Postgres is the source of truth; the process is a cache.** This is the spine of the
+design, and most of the non-obvious code follows from it:
+
+- A conversation's config lives in `ai_conversations` (`Echo.Agent.ConversationRecord`)
+  and its history in `ai_messages` (`Echo.Agent.Message`). `start_conversation/1` writes
+  the config row *before* starting the process.
+- `ConversationServer.init/1` takes **only** an `:id`. Prompt, temperature, tools,
+  provider, and full message history are all loaded back from the database — which
+  makes "create" and "resume" the same code path.
+- `ConversationManager.with_process/2` therefore resumes transparently: a registry miss
+  just starts a child, and `init/1` rehydrates. A redeploy wipes the registry
+  (every push to `elixir` goes straight to prod) and callers never notice. If no durable
+  record exists, `init/1` stops with `:conversation_not_found`.
+- `kill_conversation/1` must delete the durable record, not just the process, or the next
+  message to that id would silently resurrect the "deleted" conversation.
+
+Persistence is **synchronous and fails the turn** — see `store_parts/5`. It is not
+fire-and-forget: a resumed conversation is only as trustworthy as what actually landed in
+Postgres, so a write failure surfaces to the caller rather than being logged and dropped.
+For the same reason, the error tuple from `run_turn/5` carries the message list that was
+*actually persisted* — never more — so in-memory state and durable state cannot diverge.
+
+Note that a conversation's system prompt is written exactly once, by
+`Echo.Agent.create_conversation/2`, and is skipped when replaying history. Writing it
+anywhere else would duplicate it on every restart.
+
+### Providers
+
+`Echo.Agents.Provider` is a two-callback behaviour (`generate_content/2`,
+`build_function_tools/1`). `Echo.Agents.Providers` resolves a name to a module;
+`nil` means the default (Gemini), not "invalid".
+
+Echo has **one internal representation** of a conversation — the canonical part
+vocabulary: `text` / `functionCall` / `functionResponse` / `inlineData`, in turns shaped
+`%{"role" => "user" | "model", "parts" => [...]}`. That is the only shape
+`ConversationServer` and the `ai_messages` table ever handle. A provider translates to and
+from its own wire format at the edge, so the tool loop, persistence, and the HTTP response
+Blogs consumes are identical whichever backend answered.
+
+The vocabulary is Gemini-shaped for historical reasons — an accident of which backend came
+first, not a statement that Gemini is special. **New providers map onto it, not the other
+way round.** Two mismatches the OpenRouter provider absorbs, as examples of what that
+means in practice: it pairs a tool call with its result by `id` rather than by name (so
+the id rides along on the canonical parts and is persisted), and its tool arguments are a
+JSON *string* where Gemini's `args` is a map.
+
+A conversation's provider is fixed at creation and stored on its `ConversationRecord`.
+It is read from that record on every resume, never from `opts` — a provider held only in
+memory would quietly revert to the default the first time the process was rebuilt.
 
 ### Phoenix Contexts
 
@@ -126,11 +181,11 @@ mix assets.deploy
 | Variable | Required | Description |
 |---|---|---|
 | `GEMINI_API_KEY` | Yes (for AI features) | Google Gemini API key |
-| `GEMINI_MODEL` | No | Model override (default: `gemini-3.1-pro-preview`) |
+| `GEMINI_MODEL` | No | Default model for Gemini conversations (default: `gemini-3.1-pro-preview`) |
+| `OPENROUTER_KEY` | For OpenRouter conversations | OpenRouter API key. There is deliberately no default model — an OpenRouter conversation must name its own |
 | `USERNAME` | Yes | Basic auth username for browser routes |
 | `PASSWORD` | Yes | Basic auth password for browser routes |
 | `JWT_SECRET` | Yes | Secret for signing JWT tokens |
-| `AUDIT_PASSWORD` | For audit API | Bearer token for audit endpoints |
 | `S3_SECRET_ACCESS_KEY` | For assets | S3 secret key for asset storage |
 | `DATABASE_URL` | Prod only | Postgres connection URL |
 | `DATABASE_SSL` | Optional | Set to `true` when the Postgres provider requires TLS |
@@ -190,11 +245,12 @@ mix assets.deploy
 The project has additional documentation that may be useful for context:
 
 - `AI_API.md` — Full API reference for the AI conversation endpoints
-- `AI_CHAT_FEATURE.md` — Design doc for the @mention-based AI chat feature
 - `elixir_processes_readme.md` — Educational reference on BEAM processes, linking, and supervision
 - `docs/auth_flow.md` — Authentication flow documentation
 - `docs/blog_api.md` — Blog API documentation
-- `designs/agents_builder.md` — Design doc for the upcoming Agents Builder feature (custom tools + agents)
+- `designs/conversation_persistence.md` — Durable, resumable conversations (**implemented**)
+- `designs/openrouter_provider.md` — OpenRouter as a second provider (**implemented**)
+- `designs/skills.md` — Repeatable agent work, authored by an agent (**proposed**)
 - `lib/echo_web/agents/geminoi_api_ref.md` — Gemini API reference (local copy)
 
 ---
@@ -205,31 +261,42 @@ A conversation can carry three kinds of tool, all passed through the same `tools
 
 | Kind | Declared by | Executed by | Examples |
 |---|---|---|---|
-| Gemini built-ins | `%{"google_search" => %{}}`, `%{"url_context" => %{}}` | Gemini, server-side | Web search, URL fetching |
-| Echo tools | `Echo.Agents.Tools.tool_config/1` | `Echo.Agents.ConversationServer`, before it replies | `http_request` |
+| Provider built-ins | Gemini: `%{"google_search" => %{}}`, `%{"url_context" => %{}}`. OpenRouter: `%{"type" => "openrouter:web_search"}`, `%{"type" => "openrouter:web_fetch"}` | The provider, server-side, with no round-trip to Echo | Web search, URL fetching |
+| Echo tools | `Echo.Agents.Tools.tool_config/2` | `Echo.Agents.ConversationServer`, before it replies | `http_request` |
 | Client tools | The API caller's own `functionDeclarations` | The caller, after the reply comes back | The blog editor's `edit_text`, `insert_lines` |
 
 All three kinds can be combined in one conversation, but only on text models.
 Image-generating models (`gemini-3-pro-image-preview`) cannot call tools at all, which is
-why the `photographer` preset declares none.
+why the `photographer` preset declares none. Note that an empty `tools` list is not the
+same as no tools: sending `"tools": []` to an image model makes Gemini fail, so
+`nil` is what must reach the provider.
+
+Echo tool declarations are written **once**, in canonical lowercase-typed JSON Schema
+(`Echo.Agents.Tools.*.declaration/0`). Each provider rewrites them into its own dialect
+via `build_function_tools/1` — Gemini nests them under `functionDeclarations` and
+upper-cases every type, OpenRouter takes a flat list of `%{"type" => "function"}` entries
+and leaves the types alone. The same tool therefore works on any backend.
 
 Mixing built-in tools with function declarations requires
 `toolConfig.includeServerSideToolInvocations`, or Gemini rejects the request with a 400:
 *"Please enable tool_config.include_server_side_tool_invocations to use Built-in tools with
-Function calling."* `Echo.Agents.API.build_payload/2` sets it automatically whenever both
-kinds are present, and `test/echo/agents/api_test.exs` pins that — do not remove it.
+Function calling."* `Echo.Agents.Providers.Gemini.build_payload/2` sets it automatically
+whenever both kinds are present, and `test/echo/agents/providers_gemini_test.exs` pins
+that — do not remove it.
 
 `Echo.Agents.Tools` is the registry of the middle kind. When a reply contains a
 `functionCall` for a registered tool, `run_turn/5` in `ConversationServer` runs it,
-appends the `functionResponse` as a user turn, and calls Gemini again — up to
+appends the `functionResponse` as a user turn, and calls the provider again — up to
 `@max_tool_iterations` (5) times per user message. The caller sees the tool calls
 in the returned parts and the final answer, and every step is persisted to
-`ai_messages`.
+`ai_messages` before the next model call is made.
 
 Execution is gated on `Echo.Agents.Tools.enabled/1`, which reads the tools the
 conversation actually declared. A model can emit a call for a tool it was never
 offered, and in a conversation that only declared client-side tools Echo must not
-run it.
+run it. The same gate is what keeps OpenRouter's own server-side tools out of Echo's
+loop: they carry no `"function"` key, so they never match — which is correct, because
+OpenRouter resolves them itself and returns the results as `annotations` in `metadata`.
 
 `Echo.Agents.Tools.HttpRequest` (`http_request`) lets the model make an arbitrary
 HTTP request. Because the model picks the URL, `validate_url/1` refuses non-HTTP
@@ -241,10 +308,11 @@ responses are capped at 512 KB. It is off unless ticked on in the agent-chat for
 
 ## Active / Planned Work
 
-The **Agents Builder** feature (`designs/agents_builder.md`) is in design phase. It will add:
-- Persistent `Agent` and `Tool` Ecto schemas with a many-to-many join
-- Server-side tools (HTTP endpoint execution) and client-side tools (browser execution with server handshake)
-- A CRUD UI for defining agents and tools
-- Integration with the existing `ConversationServer` to inject agent-specific prompts and tool definitions
+**Skills** (`designs/skills.md`) is proposed, nothing is built. It supersedes the earlier
+Agents Builder design (DB-defined agents with HTTP-endpoint tools), which was never
+implemented and has been removed; the pieces worth keeping are folded into the skills doc.
 
-When working on this feature, pay close attention to the existing conversation infrastructure (`Echo.Agents.*`) and ensure new code integrates cleanly with the existing DynamicSupervisor + Registry pattern.
+When working on it, pay close attention to the existing conversation infrastructure
+(`Echo.Agents.*`) and ensure new code integrates cleanly with the DynamicSupervisor +
+Registry pattern — and with the rule that Postgres, not process state, is the source of
+truth for anything a conversation must survive a redeploy with.

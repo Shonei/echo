@@ -1,8 +1,12 @@
 # AI API Documentation
 
-The AI API provides a set of endpoints for interacting with AI (backed by Gemini) through managed, stateful conversation sessions.
+The AI API provides a set of endpoints for interacting with AI through managed, stateful conversation sessions.
 
-All endpoints are located under the `/api/v1/ai` path and require authentication provided by the `api_auth` pipeline (typically a valid Bearer token).
+A conversation runs on a **provider** — `gemini` (the default) or `openrouter`. The provider is fixed when the conversation is created. Whichever one answers, the request and response shapes documented here are identical: Echo translates to and from each backend's wire format internally.
+
+Conversations are **durable**. Config and history are stored in Postgres, so a conversation survives a restart or a redeploy and is transparently resumed on the next request. There is no "expired from memory" state to handle — a conversation exists until you `DELETE` it.
+
+All endpoints are located under the `/api/v1/ai` path and require authentication provided by the `api_auth` pipeline (a valid Bearer token from `POST /api/v1/login`).
 
 ## Base URL
 `/api/v1/ai`
@@ -17,17 +21,24 @@ Starts a new stateful AI conversation.
 
 **Endpoint:** `POST /conversation`
 
-**Request Body (JSON):**
+**Request Body (JSON):** every field is optional.
 ```json
 {
-  "system_prompt": "You are a helpful assistant.", // optional
-  "temperature": 0.7,                            // optional, default is 0.7
-  "max_output_tokens": 1024,                     // optional
-  "thinking_enabled": false,                     // optional, default is false
-  "thinking_budget": 512,                        // optional
-  "tools": []                                    // optional, list of tool definition maps
+  "provider": "gemini",                          // "gemini" (default) or "openrouter"
+  "model": "gemini-3.1-pro-preview",             // required for openrouter, see below
+  "system_prompt": "You are a helpful assistant.",
+  "temperature": 0.7,                            // default is 0.7
+  "max_output_tokens": 1024,
+  "thinking_enabled": false,                     // default is false; Gemini only
+  "thinking_budget": 512,                        // Gemini only
+  "response_modalities": ["TEXT"],               // Gemini only, e.g. ["TEXT", "IMAGE"]
+  "tools": []                                    // list of tool definition maps
 }
 ```
+
+`model` defaults to `GEMINI_MODEL` on Gemini. **OpenRouter has no default** — it fronts hundreds of models, so an `openrouter` conversation must name one (e.g. `"openai/gpt-5.6-luna"`) or every message will fail with `missing_model`.
+
+`thinking_enabled`, `thinking_budget`, and `response_modalities` are not mapped for OpenRouter; setting them is logged and ignored rather than silently honoured.
 
 **Response (`201 Created`):**
 Returns the generated conversation ID.
@@ -36,6 +47,9 @@ Returns the generated conversation ID.
   "id": "1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p"
 }
 ```
+
+**Errors:**
+- `500 Internal Server Error`: the conversation could not be started — an unknown `provider`, or a database failure. Body is `{"error": "...", "details": "..."}`.
 
 ---
 
@@ -57,26 +71,29 @@ Expects one of the following fields for the text: `message`, `text`, or `content
 ```
 
 **Response (`200 OK`):**
-Returns the newly generated conversation parts from the AI.
+Returns the newly generated conversation parts from the AI, plus provider metadata.
 ```json
 {
   "parts": [
     {
       "text": "I am doing well, thank you for asking! How can I help you today?"
     }
-  ]
+  ],
+  "metadata": {}
 }
 ```
 
-**Errors:**
+`metadata` is provider-specific and passed through verbatim — Gemini's `groundingMetadata` and `urlContextMetadata`, OpenRouter's `annotations`, `reasoning`, and `usage`. It is `{}` when the provider returned none, and is persisted alongside the reply, so whatever a server-side tool surfaced there stays in the audit trail. Treat it as opaque: read the keys you know and ignore the rest.
+
+**Errors:** the body is `{"error": "..."}`.
 - `400 Bad Request`: Missing/invalid message text, or a downstream API error.
-- `404 Not Found`: Conversation ID not found in memory.
+- `404 Not Found`: No conversation exists with this ID — it was never created, or it was deleted. Note that a conversation whose process is not currently running is *not* a 404: it is resumed from Postgres transparently.
 
 ---
 
 ### 3. Send Content Blocks
 
-Sends a complex, multi-part message to the conversation. This is useful for sending tool call responses, images, or structured message parts that Gemini expects.
+Sends a complex, multi-part message to the conversation. This is useful for sending tool call responses, images, or structured message parts.
 
 **Endpoint:** `PUT /conversation/:id/content`
 
@@ -96,20 +113,21 @@ Expects one of the following fields containing an array of parts: `content_block
 ```
 
 **Response (`200 OK`):**
-Returns the newly generated parts from the AI.
+Returns the newly generated parts from the AI, plus provider metadata, exactly as endpoint 2 does.
 ```json
 {
   "parts": [
     {
       "text": "The capital of France is Paris."
     }
-  ]
+  ],
+  "metadata": {}
 }
 ```
 
-**Errors:**
+**Errors:** the body is `{"error": "..."}`.
 - `400 Bad Request`: Missing/invalid content blocks list, or a downstream API error.
-- `404 Not Found`: Conversation ID not found.
+- `404 Not Found`: No conversation exists with this ID (see endpoint 2).
 
 ---
 
@@ -166,7 +184,11 @@ None required.
 
 ### 6. Delete a Conversation
 
-Kills a conversation and removes it from the server's memory.
+Ends a conversation: stops its process and deletes its durable record, so it can no longer be resumed. Deleting the record is what makes this stick — without it, the next message to that ID would transparently rehydrate the conversation from Postgres.
+
+Message history in `ai_messages` is deliberately **retained** and stays readable in the UI. Only the ability to continue the conversation is removed.
+
+Deleting an ID that does not exist is not an error.
 
 **Endpoint:** `DELETE /conversation/:id`
 
@@ -174,19 +196,21 @@ Kills a conversation and removes it from the server's memory.
 - `id`: The conversation ID.
 
 **Response (`204 No Content`):**
-Empty response body on successful deletion.
+Empty response body.
 
 ---
 
 ## Function Calls (Tools)
 
-Gemini allows the AI to call defined tools. You can provide these tool definitions when creating a conversation (`POST /conversation`).
+The model can call defined tools. You provide these tool definitions when creating a conversation (`POST /conversation`).
 
 Three kinds of tool can be mixed in the same `tools` list:
 
-- **Gemini built-ins** — `{"google_search": {}}` and `{"url_context": {}}`. Gemini runs these itself and reports what it did as `groundingMetadata` / `urlContextMetadata` in the response's `metadata`.
+- **Provider built-ins** — the backend runs these itself, with no round-trip to you, and reports what it did in the response's `metadata`. On Gemini: `{"google_search": {}}` and `{"url_context": {}}`, reported as `groundingMetadata` / `urlContextMetadata`. On OpenRouter: `{"type": "openrouter:web_search"}` and `{"type": "openrouter:web_fetch"}`, reported as `annotations`.
 - **Echo tools** — declarations from `Echo.Agents.Tools`, currently `http_request`. Echo executes the call itself, feeds the result back to the model, and repeats up to 5 times per message before replying, so a single request can return several `functionCall` parts followed by the final text. Execution is limited to the tools the conversation declared. Selectable from the agent-chat UI; see `agents.md` for the SSRF guardrails on `http_request`.
 - **Your own tools** — anything else you declare. Echo passes the `functionCall` back to you untouched and expects the result via `PUT /conversation/:id/content`, as described below.
+
+**Declaration dialect differs by provider.** Gemini nests declarations under `functionDeclarations` with upper-cased JSON Schema types (`"OBJECT"`, `"STRING"`); OpenRouter takes a flat list of `{"type": "function", "function": {...}}` entries with standard lowercase types. Declare tools in the dialect of the provider you chose — the example below is Gemini's.
 
 **Example Tool Definition in `POST /conversation`:**
 ```json
@@ -250,3 +274,11 @@ You must execute the function locally and send the JSON result back to the AI us
   ]
 }
 ```
+
+**On OpenRouter, echo back the call's `id`.** OpenRouter pairs a result with its call by id rather than by name, so a `functionCall` from an OpenRouter conversation carries one:
+
+```json
+{ "functionCall": { "id": "call_abc123", "name": "get_weather", "args": { "location": "San Francisco, CA" } } }
+```
+
+Copy that `id` onto the `functionResponse` alongside `name`. If you omit it, Echo falls back to sending the name as the `tool_call_id` — which works for a single call but will mispair when the model emits several in one turn. Gemini has no such id and ignores the field.
