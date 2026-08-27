@@ -27,6 +27,12 @@ defmodule Echo.Agents.Providers.Gemini do
   def generate_content(contents, opts \\ [], timeout \\ 300_000) do
     config = get_config()
 
+    # `opts[:timeout]` is what is left of the caller's turn budget (see
+    # `Echo.Agents.ConversationServer`'s `@turn_budget_ms`). Without it a call
+    # would take a fresh 300s of its own, which is how a turn could outlive the
+    # `GenServer.call` waiting on it.
+    timeout = Keyword.get(opts, :timeout) || timeout
+
     if is_nil(config.api_key) || config.api_key == "" do
       Logger.warning("GEMINI_API_KEY is not set. API calls will fail.")
       {:error, :missing_api_key}

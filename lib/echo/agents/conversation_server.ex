@@ -10,6 +10,33 @@ defmodule Echo.Agents.ConversationServer do
   # How many times Echo will run a server-side tool and call back for one user turn.
   @max_tool_iterations 5
 
+  # Wall-clock budget for one user turn, shared by every model call inside it.
+  #
+  # This exists because the turn and a single model call used to carry the same
+  # 300s timeout, one from `GenServer.call` and one from the provider's
+  # `receive_timeout`. A turn makes up to six model calls (`run_turn/5` at depths
+  # 0..#{@max_tool_iterations}) plus tool rounds in between, so the inner budget
+  # could reach ~30 minutes against an outer 300s -- and since the two were equal,
+  # a single full-length model call was already enough to blow the outer one.
+  #
+  # Losing that race is not merely slow, it is wrong: a `GenServer.call` timeout
+  # exits the *caller* and never tells this process, so the turn kept running,
+  # persisted every message, and replied into the void. The client saw a 500 for
+  # work that had completed and was durable, and its next message resumed a
+  # history it was never shown. Retrying the 500 appended the user turn twice.
+  #
+  # So the budget is set once per turn and every model call draws down from it.
+  # `Echo.Agents.ConversationManager`'s default call timeout must stay above this
+  # (it is 300_000, leaving 30s of slack) so the deadline here always fires first
+  # and the caller gets a real reply instead of an exit.
+  #
+  # This bounds model calls, which dominate. A tool round can still overshoot by
+  # its own bounded amount -- `Echo.Agents.Tools.HttpRequest` caps each request at
+  # 15s -- which the slack absorbs. The real fix is to stop holding a
+  # `GenServer.call` across the whole loop at all; see `designs/skills.md`, whose
+  # approval gate needs a turn that can pause and resume anyway.
+  @turn_budget_ms 270_000
+
   # --- Client API ---
 
   def start_link(opts) do
@@ -100,7 +127,9 @@ defmodule Echo.Agents.ConversationServer do
     user_msg = %{"role" => "user", "parts" => parts}
     new_messages = convo.messages ++ [user_msg]
 
-    # Prepare API options
+    # Prepare API options. `:deadline` is the one clock for this whole turn; see
+    # `@turn_budget_ms`. Providers ignore it and read `:timeout`, which
+    # `run_turn/5` derives from it before each call.
     api_opts = [
       system_prompt: convo.system_prompt,
       temperature: convo.temperature,
@@ -109,7 +138,8 @@ defmodule Echo.Agents.ConversationServer do
       thinking_enabled: convo.thinking_enabled,
       thinking_budget: convo.thinking_budget,
       response_modalities: convo.response_modalities,
-      model: convo.model
+      model: convo.model,
+      deadline: System.monotonic_time(:millisecond) + @turn_budget_ms
     ]
 
     # Persisted before the turn runs: a resume must be able to see the user's
@@ -148,7 +178,12 @@ defmodule Echo.Agents.ConversationServer do
   # The provider hands back canonical parts already extracted from its own
   # wire format, so nothing below this line knows which backend answered.
   defp run_turn(messages, api_opts, convo, acc_parts, depth) do
-    case convo.provider.generate_content(messages, api_opts) do
+    # Each call gets what is left of the turn, never a fresh 300s of its own.
+    # `continue_turn/7` refuses to recurse once the budget is spent, so what
+    # reaches here is positive.
+    call_opts = Keyword.put(api_opts, :timeout, remaining_ms(api_opts))
+
+    case convo.provider.generate_content(messages, call_opts) do
       {:ok, %{parts: ai_parts, metadata: metadata}} ->
         model_turn =
           %{"role" => "model", "parts" => ai_parts}
@@ -190,16 +225,43 @@ defmodule Echo.Agents.ConversationServer do
         {:ok, messages, acc_parts, metadata}
 
       calls ->
-        response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+        # Checked before running the tools, not after, so a tool round is never
+        # started with no time left to use its result. Out of budget is the same
+        # outcome as the iteration limit above, and for the same reason: every
+        # turn is already durable, so stopping here loses nothing and lets the
+        # caller get a real reply before its own timeout expires.
+        if remaining_ms(api_opts) > 0 do
+          run_tools(calls, messages, api_opts, convo, acc_parts, depth)
+        else
+          Logger.warning(
+            "Conversation #{convo.id} ran out of turn budget with #{length(calls)} pending call(s)"
+          )
 
-        case store_parts(convo.id, "user", response_parts, convo.model) do
-          :ok ->
-            tool_messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
-            run_turn(tool_messages, api_opts, convo, acc_parts, depth + 1)
-
-          {:error, reason} ->
-            {:error, reason, messages}
+          {:ok, messages, acc_parts, metadata}
         end
+    end
+  end
+
+  defp run_tools(calls, messages, api_opts, convo, acc_parts, depth) do
+    response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+
+    case store_parts(convo.id, "user", response_parts, convo.model) do
+      :ok ->
+        tool_messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
+        run_turn(tool_messages, api_opts, convo, acc_parts, depth + 1)
+
+      {:error, reason} ->
+        {:error, reason, messages}
+    end
+  end
+
+  # What is left of this turn's budget. A turn always carries a `:deadline`
+  # (`do_process_content/2` sets it); the fallback keeps this total for any
+  # caller that builds opts by hand, such as a test.
+  defp remaining_ms(api_opts) do
+    case Keyword.get(api_opts, :deadline) do
+      nil -> @turn_budget_ms
+      deadline -> deadline - System.monotonic_time(:millisecond)
     end
   end
 
