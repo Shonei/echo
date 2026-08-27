@@ -62,20 +62,86 @@ skills
   name          string
   description   text                -- what it does, for listing and picking
   instructions  text                -- the markdown body: the actual SKILL.md
-  tools         {:array, :map}      -- approved tool declarations (see below)
-  provider      string              -- nil means Gemini, per Echo.Agents.Providers
-  model         string
+  tools         {:array, :string}   -- approved tool names (see below)
+  provider      string              -- set at creation, never updatable.
+                                    --  nil means Gemini, per Echo.Agents.Providers
+  model         string              -- updatable, within that provider
   temperature   float
   max_output_tokens integer
   enabled       boolean
   timestamps
 ```
 
-`tools` holds exactly what `ai_conversations.tools` holds today, so starting a
-conversation from a skill is a straight copy rather than a translation. That
-also means a skill inherits provider-shaped tool syntax for free: Gemini
-built-ins, OpenRouter server tools, and Echo's own function declarations all
-already round-trip through that column.
+`tools` is a list of **names**, not declarations, because every tool a skill can
+reach is defined somewhere else already:
+
+| Kind | Named as | Declaration comes from |
+|---|---|---|
+| Echo tools | `http_request` | `Echo.Agents.Tools` → `tool_config/2` |
+| Provider built-ins | `google_search`, `openrouter:web_search` | the provider's own shape |
+| Pinned code blocks | the block's `name` | `skill_code_blocks.params_schema`, Phase 4 |
+
+A skill has no client, which is what makes this sufficient.
+`ai_conversations.tools` has to hold arbitrary declaration maps because Blogs
+declares `edit_text` / `insert_lines` for *itself* to execute and Echo passes
+them through untouched. A skill runs unattended: there is nobody on the other
+end to run a client-side tool, so a skill never needs to store a declaration
+it did not already have code for.
+
+Starting a conversation from a skill therefore renders the tool list for the
+skill's provider rather than copying it — the same `Tools.tool_config/2` call
+`EchoWeb.AgentChatController` already makes (`lib/echo_web/controllers/agent_chat_controller.ex:239`).
+
+Three things follow, and each of them is a bug avoided rather than a nicety:
+
+- The file projection round-trips exactly, in both directions, because
+  `tools: [http_request]` is the storage rather than a lossy rendering of it.
+- Phase 5's tool intersection becomes a set operation on strings. Comparing
+  nested declaration maps structurally is a privilege boundary implemented as
+  deep equality, which is where subtle holes live.
+- "Approve and remember" appends one string.
+
+### Provider is fixed at creation
+
+**A skill's provider can never change.** Note that storing names rather than
+declarations is *not* what makes this necessary — rendering late would survive a
+provider switch just fine, syntactically. The reason is capability parity.
+
+Echo's own tools are portable: one canonical declaration, rendered into whatever
+dialect the provider wants. Built-ins are not. `google_search` and
+`openrouter:web_search` are not one capability under two spellings — they are
+different services, reached differently, reporting differently
+(`groundingMetadata` versus `annotations`). There is no honest mapping between
+them, and a grant list that is portable in one half and not the other is worse
+than one that is not portable at all: it would move a skill to a new provider
+while silently dropping or substituting part of what it was approved to do.
+
+So the lock is about what a skill may *do*, not about how its tools are spelled.
+That reason holds whatever the column ends up storing.
+
+This mirrors conversations, where the provider is fixed at creation and read
+back from the record on every resume rather than from `opts`, for the same
+reason: a provider that can drift is a provider that will
+(`lib/echo/agents/providers.ex:5-8`). To change a skill's provider, create a
+new skill.
+
+`model` stays updatable — swapping models within one provider is routine and
+changes nothing about tool syntax.
+
+Immutability is enforced, not merely intended, through the same changeset split
+the variables use (see [Two writers, one row](#two-writers-one-row)):
+
+- **`create_changeset`** casts `provider` along with everything else.
+- **`update_changeset`** does not cast `provider` at all, so no API shape, form
+  field, or builder tool can reach it.
+
+`Echo.Content.Blog` already does this to keep `content` out of metadata updates
+(`lib/echo/content/blog.ex:52`), which is why `PUT /blogs/:id` can safely ignore
+a `content` key rather than having to reject it.
+
+A third path writes `tools` alone: "approve and remember" appends a tool to a
+skill mid-run (see [The approval gate](#the-approval-gate)). It appends to that
+one column and touches nothing else.
 
 ```
 skill_runs
@@ -155,6 +221,14 @@ This is a **projection**, in both directions: importing a file writes the
 columns. The columns remain authoritative at run time, so a hand-edited
 `tools:` line in an exported file grants nothing until it has been imported and
 saved.
+
+Because `tools` stores names, the frontmatter is the storage rather than a
+lossy rendering of it, and a skill round-trips through a file without loss.
+Import still validates: a name that is not a registered Echo tool, a built-in
+the skill's provider does not offer, or a pinned block that does not exist is
+rejected rather than stored. `provider` in an imported file is honoured on
+create and ignored on update, per
+[Provider is fixed at creation](#provider-is-fixed-at-creation).
 
 ## Running a skill
 
