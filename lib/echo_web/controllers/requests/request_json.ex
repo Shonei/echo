@@ -16,21 +16,24 @@ defmodule EchoWeb.RequestJSON do
   end
 
   defp data(%Request{} = request) do
-  body = case {request.content_type, request.body} do                                                                                                                                                                                                                                                                     
-    {_, ""} -> nil                                                                                                                                                                                                                                                                                                        
-    {"application/json" <> _, body} -> Jason.decode!(body)                                                                                                                                                                                                                                                                
-    {_, body} -> body                                                                                                                                                                                                                                                                                                     
-  end
+    body =
+      case {request.content_type, request.body} do
+        {_, ""} -> nil
+        {"application/json" <> _, body} -> Jason.decode!(body)
+        {_, body} -> body
+      end
 
-    headers = case request.headers do
-      "" -> []
-      _ -> Jason.decode!(request.headers)
-    end
+    headers =
+      case request.headers do
+        "" -> []
+        _ -> Jason.decode!(request.headers)
+      end
 
-    url_query = case request.url_query do
-      "" -> []
-      _ -> Jason.decode!(request.url_query)
-    end
+    url_query =
+      case request.url_query do
+        "" -> []
+        _ -> Jason.decode!(request.url_query)
+      end
 
     %{
       id: request.id,

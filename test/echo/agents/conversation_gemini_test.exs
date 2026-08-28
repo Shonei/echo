@@ -66,6 +66,50 @@ defmodule Echo.Agents.ConversationGeminiTest do
              %{"role" => "model", "parts" => [function_call]}
   end
 
+  # A turn can make up to six model calls. Before this, each one carried its own
+  # fresh 300s `receive_timeout` while the `GenServer.call` waiting on the whole
+  # turn also had 300s -- so the turn could outlive its caller, and since a
+  # `GenServer.call` timeout exits the caller without telling the server, the
+  # turn ran on, persisted everything, and the client got a 500 for work that
+  # had completed. One budget for the turn is what stops that.
+  test "every model call in a turn draws down one budget instead of resetting it" do
+    tools = [Echo.Agents.Tools.tool_config(["http_request"], Gemini)]
+
+    # Refused by `HttpRequest.validate_url/1` as an internal address, so the tool
+    # returns an error map without touching the network, and the loop continues.
+    call = %{
+      "functionCall" => %{"name" => "http_request", "args" => %{"url" => "http://127.0.0.1/"}}
+    }
+
+    FakeHTTPClient.stub_sequence([
+      %{"candidates" => [%{"content" => %{"parts" => [call]}, "finishReason" => "STOP"}]},
+      %{
+        "candidates" => [
+          %{"content" => %{"parts" => [%{"text" => "done"}]}, "finishReason" => "STOP"}
+        ]
+      }
+    ])
+
+    {:ok, id} =
+      ConversationManager.start_conversation(%{
+        "model" => "gemini-3.1-pro-preview",
+        "tools" => tools
+      })
+
+    assert {:ok, parts, _metadata} = ConversationManager.message(id, "fetch it")
+    assert Enum.any?(parts, &match?(%{"text" => "done"}, &1))
+
+    assert [first, second] = Enum.map(FakeHTTPClient.requests(), & &1.opts[:receive_timeout])
+
+    # The bug was both calls getting the provider's own 300_000 default.
+    refute first == 300_000
+    refute second == 300_000
+
+    assert first > 0
+    assert second > 0
+    assert second <= first
+  end
+
   defp wait_until_deregistered(id, attempts \\ 50) do
     case Registry.lookup(Echo.Agents.ConversationRegistry, id) do
       [] ->

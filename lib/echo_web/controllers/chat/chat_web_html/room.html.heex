@@ -5,7 +5,7 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-semibold text-gray-900">
-            # <%= @room %>
+            # {@room}
           </h1>
           <p class="text-sm text-gray-600">Real-time chat room</p>
         </div>
@@ -17,15 +17,15 @@
         </.link>
       </div>
     </div>
-
-    <!-- Messages Container -->
+    
+<!-- Messages Container -->
     <div id="messages-container" class="h-96 overflow-y-auto p-6 space-y-4">
       <div id="messages" class="space-y-4">
         <!-- Messages will be populated here by JavaScript -->
       </div>
     </div>
-
-    <!-- Username and Message Input -->
+    
+<!-- Username and Message Input -->
     <div class="bg-gray-50 px-6 py-4 border-t border-gray-200">
       <!-- Username Input -->
       <div class="mb-3">
@@ -40,8 +40,8 @@
           maxlength="50"
         />
       </div>
-
-      <!-- Message Input -->
+      
+<!-- Message Input -->
       <form id="message-form" class="flex space-x-4">
         <input
           type="text"
@@ -61,10 +61,13 @@
       </form>
     </div>
   </div>
-
-  <!-- Connection Status -->
+  
+<!-- Connection Status -->
   <div id="connection-status" class="mt-4 text-center">
-    <span id="status-indicator" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+    <span
+      id="status-indicator"
+      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"
+    >
       Connecting...
     </span>
   </div>
@@ -74,4 +77,5 @@
   window.chatRoom = '<%= @room %>';
   window.chatUserId = '<%= @user_id %>';
 </script>
-<script defer phx-track-static type="text/javascript" src={~p"/assets/chat.js"}></script>
+<script defer phx-track-static type="text/javascript" src={~p"/assets/chat.js"}>
+</script>

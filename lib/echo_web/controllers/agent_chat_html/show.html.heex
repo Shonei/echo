@@ -2,7 +2,9 @@
   <div class="flex justify-between items-center mb-6">
     <div>
       <h1 class="text-2xl font-bold text-gray-900">Agent Conversation</h1>
-      <p class="text-sm text-gray-500 mt-1">Session ID: <span id="session-id">{@session_id}</span></p>
+      <p class="text-sm text-gray-500 mt-1">
+        Session ID: <span id="session-id">{@session_id}</span>
+      </p>
     </div>
     <div class="flex items-center space-x-4">
       <a href={~p"/ai-messages"} class="text-blue-600 hover:text-blue-800 flex items-center">
@@ -14,14 +16,20 @@
     </div>
   </div>
 
-  <div id="messages-container" class="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4 space-y-6">
-    <div :for={message <- @messages} class={[
-      "p-6 rounded-xl shadow-sm border",
-      message.role == "system" && "bg-gray-100 border-gray-200",
-      message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
-      message.role == "model" && "bg-white border-gray-200 mr-8",
-      message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
-    ]}>
+  <div
+    id="messages-container"
+    class="flex-1 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-4 mb-4 space-y-6"
+  >
+    <div
+      :for={message <- @messages}
+      class={[
+        "p-6 rounded-xl shadow-sm border",
+        message.role == "system" && "bg-gray-100 border-gray-200",
+        message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
+        message.role == "model" && "bg-white border-gray-200 mr-8",
+        message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
+      ]}
+    >
       <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
         <div class="flex items-center space-x-2">
           <.icon :if={message.role == "system"} name="hero-cog" class="w-5 h-5 text-gray-500" />
@@ -42,21 +50,32 @@
 
         <div :if={message.type == "document"} class="mt-2">
           <%= if is_map(message.payload) && is_binary(message.payload["mimeType"]) && String.starts_with?(message.payload["mimeType"], "image/") do %>
-            <img src={"data:#{message.payload["mimeType"]};base64,#{message.payload["data"]}"} class="max-w-full rounded-md border border-gray-200" />
+            <img
+              src={"data:#{message.payload["mimeType"]};base64,#{message.payload["data"]}"}
+              class="max-w-full rounded-md border border-gray-200"
+            />
           <% else %>
             <pre class="overflow-x-auto">{Jason.encode!(message.payload, pretty: true)}</pre>
           <% end %>
         </div>
 
-        <div :if={message.type in ["functionCall", "functionResponse", "toolCall", "toolResponse"]}>
+        <div :if={
+          message.type in ["functionCall", "functionResponse", "toolCall", "toolResponse"]
+        }>
           <pre class="overflow-x-auto">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
       </div>
 
-      <div :if={has_tool_activity?(message.metadata)} class="mt-4 border-t border-gray-100 pt-3 space-y-2">
+      <div
+        :if={has_tool_activity?(message.metadata)}
+        class="mt-4 border-t border-gray-100 pt-3 space-y-2"
+      >
         <div :if={search_queries(message.metadata) != []} class="text-xs text-gray-500">
           <span class="font-semibold text-gray-600">Searched:</span>
-          <span :for={query <- search_queries(message.metadata)} class="inline-block bg-gray-100 rounded px-2 py-0.5 ml-1">
+          <span
+            :for={query <- search_queries(message.metadata)}
+            class="inline-block bg-gray-100 rounded px-2 py-0.5 ml-1"
+          >
             {query}
           </span>
         </div>
@@ -65,7 +84,12 @@
           <span class="font-semibold text-gray-600">Sources:</span>
           <ol class="list-decimal list-inside mt-1 space-y-0.5">
             <li :for={source <- grounding_sources(message.metadata)}>
-              <a href={source.uri} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 break-all">
+              <a
+                href={source.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:text-blue-800 break-all"
+              >
                 {source.title}
               </a>
             </li>
@@ -76,7 +100,12 @@
           <span class="font-semibold text-gray-600">Fetched:</span>
           <ul class="mt-1 space-y-0.5">
             <li :for={url <- fetched_urls(message.metadata)}>
-              <a href={url.uri} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 break-all">
+              <a
+                href={url.uri}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:text-blue-800 break-all"
+              >
                 {url.uri}
               </a>
               <span :if={url.status} class="text-gray-400">({url.status})</span>
@@ -107,9 +136,20 @@
       </button>
     </form>
     <div id="loading-indicator" class="hidden mt-2 text-sm text-gray-500 flex items-center">
-      <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      <svg
+        class="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-500"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+        </circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        >
+        </path>
       </svg>
       Agent is typing...
     </div>

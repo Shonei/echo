@@ -48,6 +48,10 @@ defmodule Echo.Agents.Providers.OpenRouter do
     config = get_config()
     model = Keyword.get(opts, :model)
 
+    # See the note in `Echo.Agents.Providers.Gemini.generate_content/3`: this is
+    # what remains of the caller's turn budget, not a fresh per-call timeout.
+    timeout = Keyword.get(opts, :timeout) || timeout
+
     cond do
       is_nil(config.api_key) || config.api_key == "" ->
         Logger.warning("OPENROUTER_KEY is not set. API calls will fail.")

@@ -17,4 +17,3 @@ defmodule Echo.Repo.Migrations.CreateToolConfigs do
     create index(:tool_configs, [:user_id, :function_type])
   end
 end
-

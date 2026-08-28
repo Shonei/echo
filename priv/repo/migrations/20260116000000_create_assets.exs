@@ -16,4 +16,3 @@ defmodule Echo.Repo.Migrations.CreateAssets do
     create index(:assets, [:url])
   end
 end
-

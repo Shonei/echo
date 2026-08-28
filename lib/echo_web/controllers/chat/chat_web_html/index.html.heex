@@ -29,11 +29,11 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
       <%= for room <- @rooms do %>
         <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
-          <h3 class="text-xl font-semibold text-gray-900 mb-2"><%= room.name %></h3>
-          <p class="text-gray-600 mb-2"><%= room.description %></p>
+          <h3 class="text-xl font-semibold text-gray-900 mb-2">{room.name}</h3>
+          <p class="text-gray-600 mb-2">{room.description}</p>
           <%= if room.type do %>
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 mb-4">
-              <%= room.type %>
+              {room.type}
             </span>
           <% end %>
           <div class="mt-4 flex gap-2">

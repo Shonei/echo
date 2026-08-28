@@ -48,7 +48,11 @@ defmodule Echo.FakeHTTPClient do
 
   @doc """
   Every request made since `reset/0`, oldest first, as
-  `%{method:, url:, headers:, body:}` with `body` already JSON-decoded.
+  `%{method:, url:, headers:, body:, opts:}` with `body` already JSON-decoded.
+
+  `opts` is what the provider passed to `Finch.request/3`, which is where
+  `:receive_timeout` lands — the only way to observe that a turn's budget is
+  being drawn down rather than reset per call.
   """
   def requests, do: Application.get_env(:echo, @requests_key, [])
 
@@ -63,8 +67,8 @@ defmodule Echo.FakeHTTPClient do
     %{method: method, url: url, headers: headers, body: decode(body)}
   end
 
-  def request(request, _name, _opts \\ []) do
-    Application.put_env(:echo, @requests_key, requests() ++ [request])
+  def request(request, _name, opts \\ []) do
+    Application.put_env(:echo, @requests_key, requests() ++ [Map.put(request, :opts, opts)])
 
     case Application.get_env(:echo, @stub_key, []) do
       [] ->

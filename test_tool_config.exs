@@ -1,13 +1,20 @@
 Application.ensure_all_started(:echo)
 
 opts = [
-  model: "gemini-3-pro-image-preview", # or whichever model
+  # or whichever model
+  model: "gemini-3-pro-image-preview",
   tools: [
     %{"google_search" => %{}},
     %{"functionDeclarations" => [%{"name" => "my_func", "description" => "desc"}]}
   ]
 ]
-contents = [%{"role" => "user", "parts" => [%{"text" => "Search google for current weather and then call my_func"}]}]
+
+contents = [
+  %{
+    "role" => "user",
+    "parts" => [%{"text" => "Search google for current weather and then call my_func"}]
+  }
+]
 
 # Let's test with includeServerSideToolInvocations directly in toolConfig vs inside functionCallingConfig
 
@@ -40,7 +47,13 @@ IO.puts("TEST 2 (Flag in toolConfig):")
 IO.puts(resp2.body |> String.slice(0, 500))
 
 # Test 3: Flag in functionCallingConfig
-payload3 = %{payload1 | "toolConfig" => %{"functionCallingConfig" => %{"mode" => "AUTO", "includeServerSideToolInvocations" => true}}}
+payload3 = %{
+  payload1
+  | "toolConfig" => %{
+      "functionCallingConfig" => %{"mode" => "AUTO", "includeServerSideToolInvocations" => true}
+    }
+}
+
 req3 = Finch.build(:post, url, headers, Jason.encode!(payload3))
 {_, resp3} = Finch.request(req3, Echo.Finch)
 IO.puts("TEST 3 (Flag in functionCallingConfig):")

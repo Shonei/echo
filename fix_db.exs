@@ -10,6 +10,7 @@ Echo.Agent.Message
     |> Ecto.Changeset.change(type: "toolCall")
     |> Echo.Repo.update!()
   end
+
   if Map.has_key?(msg.payload || %{}, "toolResponse") do
     msg
     |> Ecto.Changeset.change(type: "toolResponse")

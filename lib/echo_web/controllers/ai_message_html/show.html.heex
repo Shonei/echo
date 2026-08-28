@@ -12,7 +12,11 @@
       >
         <.icon name="hero-chat-bubble-left-right" class="w-4 h-4 mr-2" /> Resume Chat
       </a>
-      <span :if={!@resumable} class="text-sm text-gray-400" title="Deleted — no durable record to resume from">
+      <span
+        :if={!@resumable}
+        class="text-sm text-gray-400"
+        title="Deleted — no durable record to resume from"
+      >
         Deleted, no longer resumable
       </span>
       <a href={~p"/ai-messages"} class="text-blue-600 hover:text-blue-800 flex items-center">
@@ -22,13 +26,16 @@
   </div>
 
   <div class="space-y-6">
-    <div :for={message <- @messages} class={[
-      "p-6 rounded-xl shadow-sm border",
-      message.role == "system" && "bg-gray-50 border-gray-200",
-      message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
-      message.role == "model" && "bg-white border-gray-200 mr-8",
-      message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
-    ]}>
+    <div
+      :for={message <- @messages}
+      class={[
+        "p-6 rounded-xl shadow-sm border",
+        message.role == "system" && "bg-gray-50 border-gray-200",
+        message.role == "user" && "bg-blue-50 border-blue-100 ml-8",
+        message.role == "model" && "bg-white border-gray-200 mr-8",
+        message.role not in ["system", "user", "model"] && "bg-yellow-50 border-yellow-100"
+      ]}
+    >
       <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
         <div class="flex items-center space-x-2">
           <.icon :if={message.role == "system"} name="hero-cog" class="w-5 h-5 text-gray-500" />
@@ -47,27 +54,42 @@
           {raw(Earmark.as_html!(message.content))}
         </div>
 
-        <div :if={message.type == "functionCall"} class="bg-gray-900 text-green-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
+        <div
+          :if={message.type == "functionCall"}
+          class="bg-gray-900 text-green-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col"
+        >
           <span class="mb-1 text-gray-400">Function Call:</span>
           <pre class="bg-transparent p-0 m-0 border-0">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
-        <div :if={message.type == "functionResponse"} class="bg-gray-100 text-gray-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-gray-200 flex flex-col">
+        <div
+          :if={message.type == "functionResponse"}
+          class="bg-gray-100 text-gray-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-gray-200 flex flex-col"
+        >
           <span class="mb-1 text-gray-500">Function Response:</span>
           <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
-        <div :if={message.type == "toolCall"} class="bg-gray-900 text-blue-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col">
+        <div
+          :if={message.type == "toolCall"}
+          class="bg-gray-900 text-blue-400 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 flex flex-col"
+        >
           <span class="mb-1 text-gray-400">Server-Side Tool Call:</span>
           <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
-        <div :if={message.type == "toolResponse"} class="bg-blue-50 text-blue-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-blue-200 flex flex-col">
+        <div
+          :if={message.type == "toolResponse"}
+          class="bg-blue-50 text-blue-800 p-3 rounded-md overflow-x-auto text-xs font-mono mt-2 border border-blue-200 flex flex-col"
+        >
           <span class="mb-1 text-blue-600">Server-Side Tool Response:</span>
           <pre class="bg-transparent p-0 m-0 border-0 text-current">{Jason.encode!(message.payload, pretty: true)}</pre>
         </div>
 
-        <div :if={message.type == "document"} class="bg-blue-50 text-blue-800 p-3 rounded-md text-xs mt-2 border border-blue-200 flex flex-col">
+        <div
+          :if={message.type == "document"}
+          class="bg-blue-50 text-blue-800 p-3 rounded-md text-xs mt-2 border border-blue-200 flex flex-col"
+        >
           <span class="mb-2 font-semibold">Document Attachment</span>
           <%= if is_map(message.payload) && is_binary(message.payload["mimeType"]) && String.starts_with?(message.payload["mimeType"], "image/") do %>
             <img
@@ -75,18 +97,33 @@
               alt="Image attachment"
               class="max-w-full rounded-md border border-blue-200"
             />
-            <span class="mt-1 text-blue-500 text-xs"><%= message.payload["mimeType"] %></span>
+            <span class="mt-1 text-blue-500 text-xs">{message.payload["mimeType"]}</span>
           <% else %>
             <pre class="bg-transparent p-0 m-0 border-0 overflow-x-auto">{Jason.encode!(message.payload, pretty: true)}</pre>
           <% end %>
         </div>
 
-        <div :if={message.type not in ["text", "functionCall", "functionResponse", "toolCall", "toolResponse", "document"]} class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col">
+        <div
+          :if={
+            message.type not in [
+              "text",
+              "functionCall",
+              "functionResponse",
+              "toolCall",
+              "toolResponse",
+              "document"
+            ]
+          }
+          class="bg-red-50 text-red-800 p-3 rounded-md overflow-x-auto text-xs mt-2 border border-red-200 flex flex-col"
+        >
           <span class="mb-1">Unknown Type ({message.type}):</span>
           <pre class="bg-transparent p-0 m-0 border-0 text-current">{inspect(message.payload)}</pre>
         </div>
 
-        <div :if={is_map(message.metadata) && map_size(message.metadata) > 0} class="bg-gray-50 p-3 rounded-md overflow-x-auto text-xs font-mono mt-4 border border-gray-200 flex flex-col">
+        <div
+          :if={is_map(message.metadata) && map_size(message.metadata) > 0}
+          class="bg-gray-50 p-3 rounded-md overflow-x-auto text-xs font-mono mt-4 border border-gray-200 flex flex-col"
+        >
           <span class="mb-1 text-gray-500 font-semibold">Metadata (Citations & Context):</span>
           <pre class="bg-transparent p-0 m-0 border-0 text-gray-700">{Jason.encode!(message.metadata, pretty: true)}</pre>
         </div>
@@ -94,7 +131,10 @@
     </div>
   </div>
 
-  <div :if={length(@messages) == 0} class="p-8 text-center text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200 my-6">
+  <div
+    :if={length(@messages) == 0}
+    class="p-8 text-center text-gray-500 bg-white rounded-xl shadow-sm border border-gray-200 my-6"
+  >
     No messages found for this session.
   </div>
 </div>
