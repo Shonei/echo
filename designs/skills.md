@@ -31,12 +31,15 @@ the author approves anything dangerous, and later fired by a trigger.
    only ever offered the tools the skill declared. A finished skill may keep
    gated tools: a parked run is an ordinary conversation and is resumable in
    the UI. See [The approval gate](#the-approval-gate).
-2. **The tool list is a column, and only an operator writes it.** The markdown
-   body carries instructions and may well name parameters for the agent to use —
-   best-effort, and fine. What a skill may invoke is a security boundary, so it
-   is never parsed out of prose an agent wrote. A skill file's `tools:` line is
-   a grant an *operator* makes by importing it; no builder tool may import one.
-   See [Costs](#costs-and-open-questions).
+2. **The tool list is a column, and a human is always in the loop when it
+   changes.** The markdown body carries instructions and may well name
+   parameters for the agent to use — best-effort, and fine. What a skill may
+   invoke is a security boundary, so it is never parsed out of prose an agent
+   wrote. The builder agent can *propose* a grant, because `update_skill` is
+   itself a gated tool and the proposal stops for a decision; it cannot make
+   one. A skill file's `tools:` line is likewise a grant an operator makes by
+   importing it, and no builder tool may import one. See
+   [Who may change a tool list](#who-may-change-a-tool-list).
 3. **The builder is an agent with server-side tools**, registered in the
    existing `Echo.Agents.Tools` backend registry (`lib/echo/agents/tools.ex:14`),
    so it inherits the tool loop, persistence, and the approval gate for free.
@@ -382,6 +385,44 @@ skill may absolutely carry gated tools — a nightly job that parks on its one
 dangerous call and waits to be looked at is a reasonable thing to want, not a
 misconfiguration.
 
+### Who may change a tool list
+
+The builder agent writes skills, and a skill's tool list is its blast radius —
+so the tool that edits that list is itself gated. `update_skill(skill, tools:
+[...])` comes back as a pending call with its arguments visible, an operator
+reads exactly which grant is being proposed, and `/approve` applies it. The
+agent proposes; it never grants.
+
+This is deliberately *not* a separate mechanism. An earlier draft of this design
+reached for a changeset split — an agent-reachable changeset that cannot cast
+`tools` — but that is a second security boundary doing a worse job than the one
+already here: it draws the line at a column rather than at a specific proposed
+change, so it can only answer "may an agent ever touch this", never "is *this*
+grant reasonable". Gating shows the operator the actual arguments, and both the
+proposal and the decision land in `ai_messages`.
+
+Two rules make it hold:
+
+**The builder's own gates live in its preset, which is code.** `skill_builder`
+declares `create_skill` and `update_skill` and marks them gated in
+`Echo.Agents.Presets`. A compile-time module attribute is the thing this design
+opens by complaining about, and here it is exactly right: nothing an agent does
+can reach it, so the gate on the gate is not itself a row.
+
+**Skill-writing tools never appear in a skill's own tool list**, gated or
+otherwise — the same rule `run_elixir` has. A skill granted `update_skill` is
+one careless approval away from rewriting its grants unattended from then on.
+
+The split in [Two writers, one row](#two-writers-one-row) still stands for
+variable *bindings*, and the difference is the point:
+
+- **Gate** what a human can meaningfully review: a proposed grant, arguments in
+  full view.
+- **Withhold** what an agent should never be able to name at all: which secret
+  fills a variable. Gating `bind_variable` would work mechanically, but "the
+  agent never learns secret ids exist" is a stronger property than "the agent
+  proposes and a human checks."
+
 **Partial answers: the backend allows them, the UI should not.** Posting one
 `functionResponse` for two pending calls is accepted, and the loop resumes with
 one still unanswered. Gemini pairs by name and position and will generally
@@ -655,12 +696,13 @@ flowchart LR
 
 The two halves are deliberately different tools:
 
-- **`run_elixir`** takes `code` and `args`. It is offered **only** while a
-  conversation is in authoring mode, and always gated, so it is the ordinary
-  two-part server tool from [The approval gate](#the-approval-gate): the call
-  comes back with the code as its argument, a human reads it, and `/approve`
-  makes Echo execute it. It is never in a running skill's tool set, so a running
-  skill cannot express "execute this code" at all.
+- **`run_elixir`** takes `code` and `args`. It lives in the `skill_builder`
+  preset's tool list and in no skill's, and is always gated — so it is the
+  ordinary two-part server tool from [The approval gate](#the-approval-gate):
+  the call comes back with the code as its argument, a human reads it, and
+  `/approve` makes Echo execute it. Because a skill's tool list can never
+  contain it (see [Who may change a tool list](#who-may-change-a-tool-list)), a
+  running skill cannot express "execute this code" at all.
 - **Each pinned block** is offered at run time as its own function declaration,
   with its own name, description, and parameter schema. The model calls
   `compute_totals(orders: [...])` — it supplies arguments, never code.
@@ -685,6 +727,19 @@ Code is evaluated with the validated arguments bound to `args`, and the result
 encoded into the `functionResponse`. Failures come back as a result the model
 can read and react to, the way `Echo.Agents.Tools.HttpRequest` already returns
 its errors rather than raising (`lib/echo/agents/tools/http_request.ex:73-85`).
+
+**This phase needs a runtime dispatch path, which does not exist yet.**
+`Echo.Agents.Tools` is a compile-time registry, and three separate places assume
+every tool is in it: `enabled/1` and `executable_calls/2` both test
+`Map.has_key?(@backends, name)`, and `run/1` does `Map.fetch!(@backends, name)`
+(`lib/echo/agents/tools.ex:47`, `:73`, `:92`). A pinned block is a per-skill row,
+so none of those find it.
+
+The failure mode if this is missed is quiet and misleading: the block is declared
+to the model, the model calls it, `executable_calls/2` does not recognise the
+name, and the call falls through to the caller — indistinguishable from a gated
+tool waiting on a human. So the registry needs a second, row-backed lookup
+consulted after `@backends`, and the three call sites need to go through it.
 
 Runaway code is the failure mode that *does* have in-VM answers, and both are
 used: the block runs inside a task carrying
@@ -774,14 +829,20 @@ conversation with no skill behind it.
 **Phase 3 — Builder agent.** `create_skill`, `update_skill`,
 `update_skill_instructions`, and `define_variables` as backends in
 `Echo.Agents.Tools`, plus a `skill_builder` preset at
-`POST /api/v1/ai/agents/skill_builder`. Ordered after Phase 2 deliberately: an
-agent that can write skills is exactly the thing that should be gated from its
-first day. None of these tools can bind a variable to a secret — see
-[Two writers, one row](#two-writers-one-row).
+`POST /api/v1/ai/agents/skill_builder` that declares them and marks the
+grant-changing ones gated. Ordered after Phase 2 deliberately, and not merely
+for tidiness: an agent that can write skills is exactly the thing that should be
+gated from its first day, and Phase 2 is what makes that possible. None of these
+tools can bind a variable to a secret — see
+[Two writers, one row](#two-writers-one-row) and
+[Who may change a tool list](#who-may-change-a-tool-list).
 
-**Phase 4 — Pinned code blocks.** An `run_elixir` tool available only while
-authoring, whose approved code is pinned to the skill and re-exposed at run
-time as named, typed tools. See [Pinned code blocks](#pinned-code-blocks).
+**Phase 4 — Pinned code blocks.** A gated `run_elixir` tool in the
+`skill_builder` preset, whose approved code is pinned to the skill and
+re-exposed at run time as named, typed tools. Carries the one piece of
+groundwork this design needs and does not yet have: a row-backed tool registry
+alongside the compile-time `@backends`. See
+[Pinned code blocks](#pinned-code-blocks).
 
 **Phase 5 — The sub-agent tool.** A `spawn_agent` backend that starts a fresh
 conversation with a caller-supplied prompt and tool subset, runs it to
