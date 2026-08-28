@@ -131,7 +131,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
 
         Logger.info("http_request tool completed",
           method: method,
-          url: url,
+          url: redact(url),
           status: status,
           duration_ms: duration_ms,
           response_bytes: byte_size(resp_body),
@@ -150,7 +150,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
 
         Logger.warning("http_request tool failed",
           method: method,
-          url: url,
+          url: redact(url),
           duration_ms: duration_ms,
           error: inspect(exception)
         )
@@ -158,6 +158,22 @@ defmodule Echo.Agents.Tools.HttpRequest do
         %{"error" => "Request failed: #{Exception.message(exception)}"}
     end
   end
+
+  # A skill can substitute a variable into a URL, and plenty of APIs want the
+  # credential in the query string. `Echo.Agents.Variables` keeps that value out
+  # of the transcript, but the log is a different sink entirely -- so drop the
+  # query and any userinfo before writing the URL to it. The host and path are
+  # what makes a log line useful; neither is the secret.
+  @doc false
+  def redact(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{} = uri -> URI.to_string(%{uri | query: nil, userinfo: nil})
+    end
+  rescue
+    _ -> "[unparseable url]"
+  end
+
+  def redact(url), do: inspect(url)
 
   defp truncate(body) when is_binary(body) do
     if byte_size(body) > @max_body_bytes do

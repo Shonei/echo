@@ -11,6 +11,12 @@ config :echo,
   ecto_repos: [Echo.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Who answers a conversation's $.name placeholders. Read at call time rather
+# than referenced directly, because Echo.Skills already calls Echo.Agents --
+# naming it back would be a compile-time cycle. See
+# Echo.Agents.VariableResolver.
+config :echo, :variable_resolver, Echo.Skills.Variables
+
 # Configures the endpoint
 config :echo, EchoWeb.Endpoint,
   url: [host: "localhost"],

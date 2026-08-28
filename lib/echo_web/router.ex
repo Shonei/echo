@@ -131,6 +131,20 @@ defmodule EchoWeb.Router do
       put "/blogs/:blog_id/content", BlogController, :update_content
       get "/blogs/:blog_id/revisions", RevisionController, :index
       get "/assets", AssetController, :index
+
+      # Skills. `:id` and `:skill_id` both take an id or a slug, so
+      # POST /api/v1/skills/weekly-report/run works. Never public: a run spends
+      # Gemini money, and instructions are internal config.
+      resources "/skills", SkillController, only: [:index, :show, :create, :update, :delete]
+      put "/skills/:skill_id/instructions", SkillController, :update_instructions
+      post "/skills/:skill_id/run", SkillController, :run
+
+      get "/skills/:skill_id/runs", SkillRunController, :index
+      get "/skills/:skill_id/runs/:id", SkillRunController, :show
+
+      get "/skills/:skill_id/variables", SkillVariableController, :index
+      put "/skills/:skill_id/variables", SkillVariableController, :define
+      put "/skills/:skill_id/variables/:name", SkillVariableController, :bind
     end
 
     scope "/ai" do

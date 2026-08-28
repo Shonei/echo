@@ -22,19 +22,43 @@ defmodule EchoWeb.AuthRequiredTest do
     {:post, "/api/v1/ai/agents/editor"},
     {:post, "/api/v1/ai/agents/photographer"},
     {:put, "/api/v1/assets/auth-check.txt"},
-    {:delete, "/api/v1/assets/auth-check.txt"}
+    {:delete, "/api/v1/assets/auth-check.txt"},
+    {:get, "/api/v1/skills"},
+    {:post, "/api/v1/skills"},
+    {:get, "/api/v1/skills/0"},
+    {:put, "/api/v1/skills/0"},
+    # `resources` generates PATCH alongside PUT for :update.
+    {:patch, "/api/v1/skills/0"},
+    {:delete, "/api/v1/skills/0"},
+    {:put, "/api/v1/skills/0/instructions"},
+    {:post, "/api/v1/skills/0/run"},
+    {:get, "/api/v1/skills/0/runs"},
+    {:get, "/api/v1/skills/0/runs/0"},
+    {:get, "/api/v1/skills/0/variables"},
+    {:put, "/api/v1/skills/0/variables"},
+    {:put, "/api/v1/skills/0/variables/token"}
   ]
 
-  describe "401 table covers wallet routes" do
-    test "every /api/v1/ai route has a 401 example" do
-      ai_routes = Enum.filter(routes(), &String.starts_with?(&1.path, "/api/v1/ai"))
-      assert ai_routes != []
+  # Prefixes where every route must have a 401 example. /api/v1/ai and
+  # /api/v1/skills both reach a model; skills also writes rows that carry tool
+  # grants, which is a bigger deal than the money.
+  @guarded_prefixes ["/api/v1/ai", "/api/v1/skills"]
 
-      for route <- ai_routes do
+  describe "401 table covers wallet routes" do
+    test "every route behind a guarded prefix has a 401 example" do
+      guarded =
+        Enum.filter(routes(), fn route ->
+          Enum.any?(@guarded_prefixes, &String.starts_with?(route.path, &1))
+        end)
+
+      assert guarded != []
+
+      for route <- guarded do
         assert Enum.any?(@bearer_calls, fn {verb, path} ->
                  verb == route.verb and matches_template?(route.path, path)
                end),
-               "#{route.verb} #{route.path} can call Gemini. Add it to @bearer_calls."
+               "#{route.verb} #{route.path} can call a model or grant tools. " <>
+                 "Add it to @bearer_calls."
       end
     end
 
@@ -140,5 +164,6 @@ defmodule EchoWeb.AuthRequiredTest do
   defp dispatch_verb(conn, :get, path), do: get(conn, path)
   defp dispatch_verb(conn, :post, path), do: post(conn, path, %{})
   defp dispatch_verb(conn, :put, path), do: put(conn, path, %{})
+  defp dispatch_verb(conn, :patch, path), do: patch(conn, path, %{})
   defp dispatch_verb(conn, :delete, path), do: delete(conn, path)
 end

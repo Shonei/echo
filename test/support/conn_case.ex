@@ -20,6 +20,7 @@ defmodule EchoWeb.ConnCase do
       import Phoenix.ConnTest
       import Echo.DataCase
       import Echo.ContentFixtures
+      import Echo.SkillsFixtures
       import EchoWeb.ConnCase
     end
   end

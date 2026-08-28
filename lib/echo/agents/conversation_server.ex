@@ -100,6 +100,7 @@ defmodule Echo.Agents.ConversationServer do
               model: record.model,
               response_modalities: record.response_modalities,
               provider: provider,
+              variable_scope: record.variable_scope,
               messages: id |> Echo.Agent.list_messages_by_session() |> replay_into_turns()
             }
 
@@ -242,14 +243,28 @@ defmodule Echo.Agents.ConversationServer do
     end
   end
 
+  # `Tools.run_all/2` is where a `$.name` the model wrote becomes the value the
+  # tool runs with, and where it becomes a placeholder again on the way back.
+  # Both halves happen strictly between the two `store_parts/5` calls that
+  # bracket this: `run_turn/5` has already persisted the `functionCall` with the
+  # placeholder intact, and the responses below are scrubbed before they are
+  # persisted here. `messages` is untouched by either -- the resolved copy never
+  # leaves `run_all/2`'s stack -- so the in-memory history and Postgres stay
+  # identical, which is what `replay_into_turns/1` depends on.
   defp run_tools(calls, messages, api_opts, convo, acc_parts, depth) do
-    response_parts = Enum.map(calls, &Echo.Agents.Tools.run/1)
+    case Echo.Agents.Tools.run_all(calls, convo.variable_scope) do
+      {:ok, response_parts} ->
+        case store_parts(convo.id, "user", response_parts, convo.model) do
+          :ok ->
+            tool_messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
+            run_turn(tool_messages, api_opts, convo, acc_parts, depth + 1)
 
-    case store_parts(convo.id, "user", response_parts, convo.model) do
-      :ok ->
-        tool_messages = messages ++ [%{"role" => "user", "parts" => response_parts}]
-        run_turn(tool_messages, api_opts, convo, acc_parts, depth + 1)
+          {:error, reason} ->
+            {:error, reason, messages}
+        end
 
+      # The scope could not be answered, so nothing ran. `messages` is exactly
+      # what Postgres holds: the model turn with its unanswered `functionCall`.
       {:error, reason} ->
         {:error, reason, messages}
     end

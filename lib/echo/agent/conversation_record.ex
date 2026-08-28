@@ -29,6 +29,12 @@ defmodule Echo.Agent.ConversationRecord do
     # Gemini exactly as before.
     field :provider, :string
 
+    # Where this conversation's `$.name` placeholders resolve from, as an opaque
+    # token (`"skill_run:42"`). Handed to the configured
+    # `Echo.Agents.VariableResolver`; nothing here parses it. Null means no
+    # variables, which is every plain agent chat.
+    field :variable_scope, :string
+
     timestamps(type: :utc_datetime)
   end
 
@@ -45,7 +51,8 @@ defmodule Echo.Agent.ConversationRecord do
       :tools,
       :model,
       :response_modalities,
-      :provider
+      :provider,
+      :variable_scope
     ])
     |> validate_required([:session_id])
   end

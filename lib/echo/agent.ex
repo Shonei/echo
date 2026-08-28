@@ -205,7 +205,8 @@ defmodule Echo.Agent do
       "tools" => opt(opts, :tools, "tools"),
       "model" => opt(opts, :model, "model"),
       "response_modalities" => opt(opts, :response_modalities, "response_modalities"),
-      "provider" => opt(opts, :provider, "provider")
+      "provider" => opt(opts, :provider, "provider"),
+      "variable_scope" => opt(opts, :variable_scope, "variable_scope")
     }
 
     Repo.transaction(fn ->

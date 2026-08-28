@@ -13,6 +13,7 @@ defmodule Echo.Agents.Conversation do
             model: nil,
             response_modalities: nil,
             provider: nil,
+            variable_scope: nil,
             messages: []
 end
 
