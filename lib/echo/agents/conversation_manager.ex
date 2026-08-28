@@ -76,10 +76,14 @@ defmodule Echo.Agents.ConversationManager do
     )
   end
 
-  # `||` rather than a `get_env/3` default: a key explicitly set to nil exists,
-  # so the third argument would not apply and every conversation would come back
-  # with no resolver at all.
-  defp resolver, do: Application.get_env(:echo, :variable_resolver) || Echo.Skills.Variables
+  # Wired here rather than looked up from the bottom of the call stack, so
+  # `Echo.Agents.Variables` reads no global state and the dependency shows up in
+  # `:sys.get_state/1`. A plain constant because there is exactly one resolver;
+  # `Echo.Agents.VariableResolver` is the seam, and a second implementation
+  # would make this a lookup, not a rewrite.
+  @resolver Echo.Skills.Variables
+
+  defp resolver, do: @resolver
 
   @doc """
   Sends a message to a conversation.

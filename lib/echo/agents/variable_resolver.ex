@@ -20,8 +20,8 @@ defmodule Echo.Agents.VariableResolver do
   are testable without a skill, a database, or a model. Code that decides what
   a secret is worth protecting should not need a fixture.
 
-  Taking `names` rather than returning every binding matters more in Phase 6
-  than it does now: a secret the call never referenced is never read.
+  Taking `names` rather than returning every value will matter more once that
+  column is encrypted: a secret the call never referenced is never decrypted.
   """
 
   @typedoc """
@@ -38,9 +38,10 @@ defmodule Echo.Agents.VariableResolver do
   protect anything — a variable holding `"1"` would rewrite every `1` in every
   result, silently, and nothing downstream could tell.
 
-  Phase 1 has only `config` and `input` variables and returns `:plain` for
-  both, so scrubbing is a tested no-op. Phase 6's `secret` and Phase 7's
-  `oauth` return `:sensitive`, and nothing in `Echo.Agents` changes.
+  `Echo.Skills` returns `:plain` for a `config` variable and `:sensitive` for a
+  `secret`. Nothing here knows those words: a resolver classifies its own
+  values, which is what let secrets arrive without changing a line in
+  `Echo.Agents`.
   """
   @type sensitivity :: :plain | :sensitive
 
