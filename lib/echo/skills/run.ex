@@ -6,7 +6,7 @@ defmodule Echo.Skills.Run do
   # conversation is where the work is actually recorded; `session_id` is the
   # join to it, readable at /ai-messages/:session_id.
   schema "skill_runs" do
-    # Plain integer, no assoc: skill_triggers arrives in Phase 8.
+    # Plain integer, no assoc: there is no triggers table yet.
     field :trigger_id, :id
     field :session_id, :string
     field :status, :string, default: "queued"
@@ -21,9 +21,7 @@ defmodule Echo.Skills.Run do
     timestamps(type: :utc_datetime)
   end
 
-  # `awaiting_approval` is unreachable in Phase 1 -- nothing gates a tool yet --
-  # but it is the status Phase 2 parks a run in, and leaving it out now means a
-  # changeset edit then for no gain.
+  # `awaiting_approval` is a run parked on a gated tool call.
   @statuses ~w(queued running awaiting_approval succeeded failed)
 
   @doc """

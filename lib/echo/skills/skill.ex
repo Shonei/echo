@@ -57,8 +57,8 @@ defmodule Echo.Skills.Skill do
   and `openrouter:web_search` are different services, not two spellings of one
   capability, so moving a skill between providers would silently drop or
   substitute part of what it was approved to do. Withholding the cast means no
-  API shape, form field, or (in Phase 3) builder tool can reach it -- exactly
-  how `Echo.Content.Blog.metadata_changeset/2` keeps `content` out of a metadata
+  API shape, form field, or agent tool can reach it -- exactly how
+  `Echo.Content.Blog.metadata_changeset/2` keeps `content` out of a metadata
   update, and why a `provider` key here is ignored rather than rejected.
 
   `instructions` is withheld for the blog's other reason: editing the body is a
@@ -96,13 +96,10 @@ defmodule Echo.Skills.Skill do
     |> unique_constraint(:slug)
   end
 
-  # What a skill may invoke is a security boundary, so an unknown name is
-  # rejected rather than stored and silently ignored at run time. The allow-list
-  # is Echo's own tools plus the built-ins *this* provider offers, which is also
-  # what keeps `google_search` off an OpenRouter skill.
-  #
-  # `get_field/2` falls back to the struct, so an update -- which never casts
-  # provider -- validates against the provider already on the row.
+  # An unknown name is rejected rather than ignored at run time. The allow-list
+  # is provider-specific, which keeps `google_search` off an OpenRouter skill.
+  # `get_field/2` falls back to the struct, so an update validates against the
+  # provider already on the row.
   defp validate_tools(changeset) do
     case Providers.resolve(get_field(changeset, :provider)) do
       {:ok, provider_module} ->
@@ -130,9 +127,8 @@ defmodule Echo.Skills.Skill do
 
   defp unknown_names(_tool_config, _known), do: ["must be an object keyed by tool name"]
 
-  # A gate decides whether a call runs unattended, so an unrecognised one is
-  # refused here rather than resolved at run time -- where the safe reading is
-  # "stop", and a typo would silently park every call the skill makes.
+  # Refused here rather than at run time, where an unrecognised gate fails
+  # closed and a typo would silently park every call.
   defp bad_settings(tool_config) when is_map(tool_config) do
     tool_config
     |> Enum.flat_map(fn

@@ -53,9 +53,8 @@ end
 
 if config_env() in [:dev, :test] do
   # Tests fall back to a local Postgres so `mix test` works without an export.
-  # Only in :test, and only off CI: dev still raises, because a dev server
-  # silently pointing at a throwaway local database is a worse failure than a
-  # clear message. CI always supplies POSTGRES_URL as a secret.
+  # Dev still raises: a server silently pointing at a throwaway database is
+  # worse than a clear error.
   test_default =
     if config_env() == :test and System.get_env("CI") not in ~w(true 1) do
       "postgres://postgres:postgres@localhost:5432/echo_dev"

@@ -61,7 +61,10 @@ defmodule EchoWeb.AgentChatController do
         models
 
       {:error, reason} ->
-        Logger.warning("Could not list OpenRouter models for the agent form: #{inspect(reason)}")
+        Logger.warning("Could not list OpenRouter models for the agent form",
+          reason: inspect(reason)
+        )
+
         []
     end
   end

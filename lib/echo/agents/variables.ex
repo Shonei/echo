@@ -5,27 +5,23 @@ defmodule Echo.Agents.Variables do
 
   Two properties, and everything here exists to hold them:
 
-  1. **The placeholder is what gets persisted.** `run_turn/5` writes the model's
-     `functionCall` to `ai_messages` before the tool loop continues, so the
-     arguments in Postgres are the ones the model wrote. `resolve/3` builds a
-     *copy* for the tool to run with, and nothing writes it back — the parts it
-     came from are immutable, so it cannot leak upward by accident. History is
-     replayed into every later model request (`replay_into_turns/1`), so a value
-     expanded into it would be re-sent for the rest of the conversation's life.
+  1. **The placeholder is what gets persisted.** The model's `functionCall`
+     reaches `ai_messages` before the tool loop continues, so the arguments in
+     Postgres are the ones the model wrote. `resolve/3` builds a copy for the
+     tool to run with, and nothing writes it back. History is replayed into
+     every later model request, so a value expanded into it would be re-sent for
+     the rest of the conversation's life.
 
-  2. **The value does not come back in the result.** `scrub/2` puts the
-     placeholder back wherever a resolved value shows up in what the tool
-     returned, before the `functionResponse` is persisted or shown to the model.
-     A backstop, not a guarantee: a value the tool transformed — encoded,
-     hashed, or cut in half by a response-size cap — will not match and will not
-     be caught.
+  2. **A sensitive value does not come back in the result.** `scrub/2` puts the
+     placeholder back wherever one shows up in what the tool returned, before it
+     is persisted or shown to the model. A backstop, not a guarantee: a value
+     the tool transformed — encoded, hashed, truncated — will not match and will
+     not be caught.
   """
 
   require Logger
 
-  # `$$.name` is the escape: a jq path, or a shell string that genuinely needs
-  # the literal text. Without it a skill could never send `$.foo` to a tool at
-  # all, and finding that out later means breaking the syntax to fix it.
+  # `$$.name` escapes to a literal `$.name`, for jq paths and the like.
   @placeholder ~r/(\$\$?)\.([a-z_][a-z0-9_]*)/
 
   @type pair :: {value :: String.t(), placeholder :: String.t()}
@@ -35,13 +31,8 @@ defmodule Echo.Agents.Variables do
   @doc """
   Every variable name referenced anywhere in `term`, deduplicated.
 
-  Order follows traversal, which for a map is term order rather than the order
-  the keys were written, so treat the result as a set. `resolve/3` only uses it
-  to ask the resolver for names.
-
-  Walks map values and lists. Map *keys* are not scanned: a header name is not
-  somewhere a credential belongs, and allowing it would double the substitution
-  surface for nothing. Non-strings are ignored.
+  Order follows traversal, so treat the result as a set. Map keys are not
+  scanned.
   """
   @spec scan(term()) :: [String.t()]
   def scan(term), do: term |> collect([]) |> Enum.reverse() |> Enum.uniq()
@@ -67,13 +58,11 @@ defmodule Echo.Agents.Variables do
   Replaces every `$.name` in `term` with its value from `values`.
 
   A string that is *exactly* one reference takes the value's own type, so a
-  variable declared `type: number` reaches the tool as `3` rather than `"3"`.
-  A reference embedded in a longer string — `"Bearer $.github_api_key"` — is
+  variable declared `type: number` reaches the tool as `3` rather than `"3"`. A
+  reference embedded in a longer string — `"Bearer $.github_api_key"` — is
   always stringified, because there is nothing else it could be.
 
-  A name with no entry in `values` is left exactly as written. `resolve/3`
-  refuses the call before reaching here, so in practice that is only a direct
-  unit test.
+  A name with no entry in `values` is left exactly as written.
   """
   @spec substitute(term(), %{optional(String.t()) => term()}) :: term()
   def substitute(term, values)
@@ -113,13 +102,9 @@ defmodule Echo.Agents.Variables do
   needs to undo them. Both live on the caller's stack and neither is persisted.
 
     * `{:ok, args, used}` — resolved. `used` may be empty.
-    * `{:error, :unresolved, message}` — the model named something that does
-      not exist. `message` is model-facing.
+    * `{:error, :unresolved, message}` — the model named something that does not
+      exist. `message` is model-facing.
     * `{:error, :unavailable, reason}` — the scope could not be answered.
-
-  `resolver` is supplied by the caller rather than looked up here. Nothing in
-  this module reads application config, which is what lets every test of it run
-  with no setup at all.
   """
   @spec resolve(map(), String.t() | nil, module() | nil) ::
           {:ok, map(), [pair()]}
@@ -127,11 +112,8 @@ defmodule Echo.Agents.Variables do
           | {:error, :unavailable, term()}
   def resolve(args, scope, resolver)
 
-  # No scope means no variables, so `$.foo` is just text — and it has to stay
-  # text. `http_request` is already reachable from the plain agent chat, where a
-  # `$.` is far likelier to be a jq path than a reference to something that does
-  # not exist. Every conversation predating this behaves exactly as it did, and
-  # does so without a query.
+  # No scope means no variables, so `$.` stays literal text -- in the plain
+  # agent chat it is far likelier to be a jq path.
   def resolve(args, nil, _resolver), do: {:ok, args, []}
 
   def resolve(args, scope, resolver) when is_binary(scope) do
@@ -141,8 +123,7 @@ defmodule Echo.Agents.Variables do
     end
   end
 
-  # A conversation carrying a scope with nothing to answer it must not fall
-  # through and hand the tool `$.token` as a literal.
+  # Never fall through and hand the tool `$.token` as a literal.
   defp do_resolve(_args, _scope, _names, nil),
     do: {:error, :unavailable, :no_resolver}
 
@@ -167,11 +148,13 @@ defmodule Echo.Agents.Variables do
     resolver.fetch(scope, names)
   rescue
     exception ->
-      # A resolver blowing up must not take the conversation process with it.
-      # An unhandled exit here reaches the caller as a `GenServer.call` exit,
-      # which is the "500 for work that completed" failure `@turn_budget_ms`
-      # exists to stop.
-      Logger.error("Variable resolver raised for #{inspect(scope)}: #{inspect(exception)}")
+      # A raise here would exit the caller's `GenServer.call`, losing a turn
+      # that has already been persisted.
+      Logger.error("Variable resolver raised",
+        scope: scope,
+        error: Exception.message(exception)
+      )
+
       {:error, {:resolver_raised, exception}}
   end
 
@@ -187,10 +170,8 @@ defmodule Echo.Agents.Variables do
   @doc """
   Whether a resolved value is replaced in a tool result.
 
-  Only `:sensitive` binaries are. A `:plain` value is left alone on purpose:
-  replacing a config value would corrupt the result rather than protect
-  anything, and a variable holding `"1"` would rewrite every `1` in every
-  result with nothing downstream able to tell.
+  Only `:sensitive` binaries are. Replacing a config value would corrupt the
+  result rather than protect anything.
   """
   @spec scrubbable?(term(), Echo.Agents.VariableResolver.sensitivity()) :: boolean()
   def scrubbable?(value, :sensitive) when is_binary(value), do: value != ""

@@ -1,27 +1,13 @@
 defmodule Echo.Agents.VariableResolver do
   @moduledoc """
-  The one thing `Echo.Agents` needs from whatever owns a conversation's
-  variables, and the only thing it is allowed to know about it.
+  Turns variable names into values for a conversation.
 
-  `Echo.Agents` is generic conversation machinery; `Echo.Skills` is one consumer
-  of it. Rather than have the generic layer name a specific consumer, the
-  dependency is inverted: the contract lives here, the implementation lives in
-  `Echo.Skills.Variables`, and `Echo.Agents.ConversationManager` hands the module
-  to each conversation at start.
-
-  Injecting it works only because there is one resolver for the whole system.
-  Anything that varies per conversation has to be durable instead, since
-  `ConversationServer.init/1` receives nothing but an id — which is why the
-  *scope* is a column and the resolver is not.
-
-  The callback is deliberately the smallest thing that can cross: names in,
-  values out. Finding placeholders, substituting them, and scrubbing them back
-  out of a tool result are pure and live in `Echo.Agents.Variables`, where they
-  are testable without a skill, a database, or a model. Code that decides what
-  a secret is worth protecting should not need a fixture.
-
-  Taking `names` rather than returning every value will matter more once that
-  column is encrypted: a secret the call never referenced is never decrypted.
+  `Echo.Agents` is generic and `Echo.Skills` is one consumer of it, so the
+  contract lives here and the implementation lives there;
+  `Echo.Agents.ConversationManager` hands the module to each conversation at
+  start. That works because there is one resolver for the whole system --
+  anything varying per conversation has to be durable, which is why the scope
+  is a column.
   """
 
   @typedoc """
@@ -31,17 +17,11 @@ defmodule Echo.Agents.VariableResolver do
   @type value :: String.t() | number() | boolean()
 
   @typedoc """
-  How hard a value must be kept out of the transcript.
+  Whether a value is kept out of the transcript.
 
-  `:sensitive` is replaced by its placeholder in a tool result. `:plain` is
-  left alone: scrubbing a config value would corrupt results rather than
-  protect anything — a variable holding `"1"` would rewrite every `1` in every
-  result, silently, and nothing downstream could tell.
-
-  `Echo.Skills` returns `:plain` for a `config` variable and `:sensitive` for a
-  `secret`. Nothing here knows those words: a resolver classifies its own
-  values, which is what let secrets arrive without changing a line in
-  `Echo.Agents`.
+  `:sensitive` is replaced by its placeholder in a tool result; `:plain` is left
+  alone, because replacing a config value would corrupt results rather than
+  protect anything.
   """
   @type sensitivity :: :plain | :sensitive
 
@@ -51,15 +31,15 @@ defmodule Echo.Agents.VariableResolver do
   @doc """
   Resolves `names` within `scope`.
 
-  Returns only what it could resolve. A name missing from the map is reported
-  to the model as unknown, so "never declared" and "declared but never bound"
-  look the same — which is what they are from where the model sits, and it
-  means one error path rather than two.
+  Returns only what it could resolve. A name missing from the map is reported to
+  the model as unknown, so "never declared" and "declared but never given a
+  value" look the same — which is what they are from where the model sits, and
+  it means one error path rather than two.
 
-  `{:error, reason}` means the *scope* could not be answered at all: deleted,
-  or its store unreachable. That fails the turn rather than reaching the model,
-  because telling a model its credential is unavailable invites it to
-  improvise around it.
+  `{:error, reason}` means the *scope* could not be answered at all: deleted, or
+  its store unreachable. That fails the turn rather than reaching the model,
+  because telling a model its credential is unavailable invites it to improvise
+  around it.
   """
   @callback fetch(scope(), names :: [String.t()]) ::
               {:ok, %{optional(String.t()) => {value(), sensitivity()}}} | {:error, term()}

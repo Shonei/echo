@@ -29,14 +29,11 @@ defmodule Echo.Agent.ConversationRecord do
     # Gemini exactly as before.
     field :provider, :string
 
-    # Where this conversation's `$.name` placeholders resolve from, as an opaque
-    # token (`"skill:12"`). Handed to the configured
-    # `Echo.Agents.VariableResolver`; nothing here parses it. Null means no
-    # variables, which is every plain agent chat.
+    # Opaque token (`"skill:12"`) handed to the variable resolver; nothing here
+    # parses it. Null means no variables.
     field :variable_scope, :string
 
-    # What Echo may execute here, and how. Null means "derive it from the
-    # declarations", the behaviour that predates this column.
+    # What Echo may execute here, and how. Null derives it from `tools`.
     field :tool_config, :map
 
     timestamps(type: :utc_datetime)

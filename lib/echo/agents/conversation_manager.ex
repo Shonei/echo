@@ -9,16 +9,13 @@ defmodule Echo.Agents.Conversation do
             thinking_enabled: false,
             thinking_budget: nil,
             tools: nil,
-            # Resolved once at `init/1` into `Echo.Agents.Tool` structs, so the
-            # execution path never consults the compile-time registry.
+            # Resolved once at `init/1` into `Echo.Agents.Tool` structs.
             toolset: [],
             model: nil,
             response_modalities: nil,
             provider: nil,
             variable_scope: nil,
-            # Who answers `$.name` for this conversation. Injected rather than
-            # looked up from the bottom of the call stack, so it shows up in
-            # `:sys.get_state/1` and `Echo.Agents.Variables` stays pure.
+            # Who answers `$.name` for this conversation.
             resolver: nil,
             messages: []
 end
@@ -53,7 +50,7 @@ defmodule Echo.Agents.ConversationManager do
 
       {:error, reason} ->
         require Logger
-        Logger.error("Failed to start conversation #{id}: #{inspect(reason)}")
+        Logger.error("Failed to start conversation", conversation_id: id, reason: inspect(reason))
         # Only reachable once the record was already created (a
         # `create_conversation/2` failure short-circuits the `with` before
         # this branch): don't leave a durable record behind for a
@@ -63,12 +60,8 @@ defmodule Echo.Agents.ConversationManager do
     end
   end
 
-  # Every path that spins up a server goes through here -- `start_conversation/1`
-  # and the resume in `with_process/2` -- which is what lets the resolver be
-  # injected without a resumed conversation losing it. It can be injected at all
-  # only because it is one module for the whole system; anything that varies per
-  # conversation has to be durable instead, which is why the *scope* is a column
-  # and the resolver is not.
+  # Both `start_conversation/1` and the resume in `with_process/2` come through
+  # here, so an injected resolver survives a restart.
   defp start_child(id) do
     DynamicSupervisor.start_child(
       Echo.Agents.ConversationSupervisor,
@@ -76,11 +69,8 @@ defmodule Echo.Agents.ConversationManager do
     )
   end
 
-  # Wired here rather than looked up from the bottom of the call stack, so
-  # `Echo.Agents.Variables` reads no global state and the dependency shows up in
-  # `:sys.get_state/1`. A plain constant because there is exactly one resolver;
-  # `Echo.Agents.VariableResolver` is the seam, and a second implementation
-  # would make this a lookup, not a rewrite.
+  # Wired here so `Echo.Agents.Variables` reads no global state. A constant
+  # because there is one resolver; `Echo.Agents.VariableResolver` is the seam.
   @resolver Echo.Skills.Variables
 
   defp resolver, do: @resolver

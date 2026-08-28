@@ -7,7 +7,6 @@ defmodule Echo.Skills do
   conversation, so everything a run does is readable at `/ai-messages` like any
   other; `skill_runs` is the index and the log, not a second record of the work.
 
-  See `designs/skills.md`.
   """
 
   import Ecto.Query, warn: false
@@ -125,8 +124,8 @@ defmodule Echo.Skills do
   Replaces a skill's whole declaration set.
 
   Declarative rather than a sequence of add/update/remove calls, because that is
-  easier for a model to get right in Phase 3 and it is idempotent when the agent
-  retries.
+  easier for an agent to get right than a sequence of add/update/remove calls,
+  and it is idempotent on a retry.
 
   Values survive for any variable whose `name` is unchanged — the row is
   updated, and `declaration_changeset/2` does not cast `value`, so a value is
@@ -134,9 +133,9 @@ defmodule Echo.Skills do
   with it.
 
   One narrow exception: redeclaring a `secret` as a `config` clears the value.
-  This path is agent-reachable in Phase 3, and without it an agent could expose
-  a stored secret through the API by rewriting its kind. Going the other way
-  keeps the value, since that only ever adds protection.
+  This path is reachable by an agent, which could otherwise expose a stored
+  secret through the API by rewriting its kind. Going the other way keeps the
+  value, since that only ever adds protection.
 
   `position` comes from list order, so ordering is a property of the call.
 
@@ -181,10 +180,8 @@ defmodule Echo.Skills do
     end)
   end
 
-  # The one place `declaration_changeset/2` is allowed to touch a value, and it
-  # only ever removes one — so the write split still holds. Only the
-  # secret-to-config direction, which is the one that would otherwise turn a
-  # stored secret into something the API renders.
+  # Only ever clears a value, never sets one, so the write split still holds.
+  # Only secret-to-config: the other direction cannot expose anything.
   defp clear_binding_on_kind_change(changeset, %Variable{kind: "secret"}) do
     case Ecto.Changeset.get_change(changeset, :kind) do
       nil -> changeset
@@ -233,8 +230,8 @@ defmodule Echo.Skills do
   caller has to poll to discover was doomed. `Echo.Skills.Runner` checks again,
   because a binding can be removed between the two.
 
-  `enabled` is deliberately not consulted: a skill can be taken off its schedule
-  and still be tested by hand. Phase 8's triggers are what check it.
+  `enabled` is deliberately not consulted, so a skill can be taken off its
+  schedule and still be run by hand. Triggers are what check it.
   """
   def run_skill(%Skill{} = skill, input \\ %{}) when is_map(input) do
     skill = Repo.preload(skill, :variables)

@@ -185,11 +185,8 @@ defmodule Echo.Agents.Tools.HttpRequest do
     end
   end
 
-  # A skill can substitute a variable into a URL, and plenty of APIs want the
-  # credential in the query string. `Echo.Agents.Variables` keeps that value out
-  # of the transcript, but the log is a different sink entirely -- so drop the
-  # query and any userinfo before writing the URL to it. The host and path are
-  # what makes a log line useful; neither is the secret.
+  # A credential can be substituted into a query string, and the log is a sink
+  # the transcript scrubber never sees. Host and path are the useful part.
   @doc false
   def redact(url) when is_binary(url) do
     case URI.parse(url) do

@@ -33,8 +33,7 @@ defmodule Echo.Agents.ConversationServer do
   # This bounds model calls, which dominate. A tool round can still overshoot by
   # its own bounded amount -- `Echo.Agents.Tools.HttpRequest` caps each request at
   # 15s -- which the slack absorbs. The real fix is to stop holding a
-  # `GenServer.call` across the whole loop at all; see `designs/skills.md`, whose
-  # approval gate needs a turn that can pause and resume anyway.
+  # `GenServer.call` across the whole loop at all.
   @turn_budget_ms 270_000
 
   # --- Client API ---
@@ -217,15 +216,13 @@ defmodule Echo.Agents.ConversationServer do
   end
 
   defp continue_turn(messages, ai_parts, api_opts, convo, acc_parts, metadata, depth) do
-    # A gated call is not executed and not answered: the turn ends, every call
-    # comes back to the caller in `acc_parts`, and the process is freed. That is
-    # the path a client-side tool already takes, so nothing new happens here --
-    # what makes it an approval rather than a dead end is the resume, which
-    # `designs/skills.md` Phase 2 adds.
     case Echo.Agents.Tools.partition_calls(ai_parts, convo.toolset) do
+      # The turn ends with the gated calls unanswered, and they come back to the
+      # caller in `acc_parts` like a client-side tool's would.
       {[], parked} when parked != [] ->
-        Logger.info(
-          "Conversation #{convo.id} parked #{length(parked)} call(s) awaiting a decision"
+        Logger.info("Conversation parked calls awaiting a decision",
+          conversation_id: convo.id,
+          parked: length(parked)
         )
 
         {:ok, messages, acc_parts, metadata}
@@ -234,23 +231,22 @@ defmodule Echo.Agents.ConversationServer do
         {:ok, messages, acc_parts, metadata}
 
       {calls, _parked} when depth >= @max_tool_iterations ->
-        Logger.warning(
-          "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
+        Logger.warning("Conversation hit the tool iteration limit",
+          conversation_id: convo.id,
+          pending: length(calls)
         )
 
         {:ok, messages, acc_parts, metadata}
 
       {calls, _parked} ->
-        # Checked before running the tools, not after, so a tool round is never
-        # started with no time left to use its result. Out of budget is the same
-        # outcome as the iteration limit above, and for the same reason: every
-        # turn is already durable, so stopping here loses nothing and lets the
-        # caller get a real reply before its own timeout expires.
+        # Checked before the round, not after, so one is never started with no
+        # time left to use its result.
         if remaining_ms(api_opts) > 0 do
           run_tools(calls, messages, api_opts, convo, acc_parts, depth)
         else
-          Logger.warning(
-            "Conversation #{convo.id} ran out of turn budget with #{length(calls)} pending call(s)"
+          Logger.warning("Conversation ran out of turn budget",
+            conversation_id: convo.id,
+            pending: length(calls)
           )
 
           {:ok, messages, acc_parts, metadata}
@@ -258,14 +254,10 @@ defmodule Echo.Agents.ConversationServer do
     end
   end
 
-  # `Tools.run_all/4` is where a `$.name` the model wrote becomes the value the
-  # tool runs with, and where it becomes a placeholder again on the way back.
-  # Both halves happen strictly between the two `store_parts/5` calls that
-  # bracket this: `run_turn/5` has already persisted the `functionCall` with the
-  # placeholder intact, and the responses below are scrubbed before they are
-  # persisted here. `messages` is untouched by either -- the resolved copy never
-  # leaves `run_all/4`'s stack -- so the in-memory history and Postgres stay
-  # identical, which is what `replay_into_turns/1` depends on.
+  # `run_all/4` resolves `$.name` into the arguments the tools run with and
+  # scrubs the values back out of the results. The resolved copy never leaves
+  # its stack, so `messages` and Postgres stay identical -- which
+  # `replay_into_turns/1` depends on.
   defp run_tools(calls, messages, api_opts, convo, acc_parts, depth) do
     case Echo.Agents.Tools.run_all(calls, convo.toolset, convo.variable_scope, convo.resolver) do
       {:ok, response_parts} ->
@@ -278,8 +270,7 @@ defmodule Echo.Agents.ConversationServer do
             {:error, reason, messages}
         end
 
-      # The scope could not be answered, so nothing ran. `messages` is exactly
-      # what Postgres holds: the model turn with its unanswered `functionCall`.
+      # Nothing ran, so `messages` is still exactly what Postgres holds.
       {:error, reason} ->
         {:error, reason, messages}
     end
@@ -318,12 +309,12 @@ defmodule Echo.Agents.ConversationServer do
             {:cont, :ok}
 
           {:error, changeset} ->
-            Logger.error("Failed to persist ai_message: #{inspect(changeset.errors)}")
+            Logger.error("Failed to persist ai_message", errors: inspect(changeset.errors))
             {:halt, {:error, {:persistence_failed, changeset}}}
         end
       rescue
         e ->
-          Logger.error("Exception persisting ai_message: #{inspect(e)}")
+          Logger.error("Exception persisting ai_message", error: inspect(e))
           {:halt, {:error, {:persistence_failed, e}}}
       end
     end)

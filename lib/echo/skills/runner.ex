@@ -2,16 +2,13 @@ defmodule Echo.Skills.Runner do
   @moduledoc """
   Executes one skill run.
 
-  `execute/1` is public and synchronous on purpose: it is the whole run, so a
-  test can call it directly with a stubbed HTTP client and assert on the row,
-  with no task, no polling and no timing. `start/1` is the same work under a
-  supervisor.
+  `execute/1` is public and synchronous so a test can call it directly and
+  assert on the row, with no task and no polling. `start/1` is the same work
+  under a supervisor.
 
-  A run is one task per stretch of unattended work. There is no job library, no
-  retries and no queue: durability for in-flight runs is a trade
-  `designs/skills.md` makes deliberately, not an oversight. A restart mid-run
-  leaves the row in `running`, and the conversation itself is durable and
-  readable, so nothing is lost but the status.
+  There is no job library and no retries. A restart mid-run leaves the row in
+  `running`; the conversation itself is durable, so nothing is lost but the
+  status.
   """
 
   require Logger
@@ -52,23 +49,21 @@ defmodule Echo.Skills.Runner do
       :ok ->
         converse(run, skill)
 
-      # Reachable when a binding was removed between `run_skill/2` and here.
-      # Failing before the first model call is the point: a skill missing a
-      # value should fail immediately with a clear message, not burn a turn and
-      # then fail inside a tool.
+      # Checked again here because a value can be removed between the two.
       {:error, {:unbound_variables, names}} ->
         fail(run, "required variables are unbound: #{Enum.join(names, ", ")}")
     end
   rescue
     error ->
-      Logger.error(
-        "Skill run #{run_id} raised: #{Exception.format(:error, error, __STACKTRACE__)}"
+      Logger.error("Skill run raised",
+        run_id: run_id,
+        error: Exception.format(:error, error, __STACKTRACE__)
       )
 
       fail_by_id(run_id, Exception.message(error))
   catch
     kind, reason ->
-      Logger.error("Skill run #{run_id} exited: #{inspect({kind, reason})}")
+      Logger.error("Skill run exited", run_id: run_id, reason: inspect({kind, reason}))
       fail_by_id(run_id, "run exited: #{inspect(reason)}")
   end
 
@@ -96,17 +91,13 @@ defmodule Echo.Skills.Runner do
       "temperature" => skill.temperature,
       "max_output_tokens" => skill.max_output_tokens,
       "tools" => SkillTools.render(skill.tool_config, provider_module),
-      # What Echo may execute, and how -- carried onto the conversation so a
-      # resumed one rebuilds the same toolset from its own row rather than
-      # having to find the skill again.
+      # Copied onto the conversation so a resume rebuilds the same toolset
+      # without needing the skill.
       "tool_config" => skill.tool_config,
-      # Where this conversation's `$.name` tool arguments resolve from. Opaque
-      # to `Echo.Agents`, which stores it and hands it back to the configured
-      # resolver. It names the skill, because variables belong to the skill.
+      # Where `$.name` tool arguments resolve from. Opaque to `Echo.Agents`.
       "variable_scope" => Variables.scope(skill)
     }
-    # `create_conversation/2` drops unknown keys but not nils, and a nil tools
-    # or model is meaningfully different from an absent one.
+    # A nil `tools` or `model` is not the same as an absent one.
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
@@ -121,20 +112,19 @@ defmodule Echo.Skills.Runner do
     end
   end
 
-  # A turn that ended on a gated call is not finished and is not a failure. The
-  # run parks, its task ends, and nothing holds a process open across human
-  # time -- the conversation is durable and resumable like any other, so the
-  # work is not stranded, only waiting.
-  #
-  # A skill run has no client, so an unanswered call can only be one that
-  # stopped for a decision.
+  # A skill run has no client, so an unanswered call is one that stopped for a
+  # human. Parking is not a failure: the conversation is durable and resumable.
   defp finish(%Run{} = run, result) do
     case Echo.Agent.unanswered_calls(run.session_id) do
       [] ->
         Skills.finish_run(run, "succeeded", result: result)
 
       pending ->
-        Logger.info("Skill run #{run.id} is awaiting a decision on #{length(pending)} call(s)")
+        Logger.info("Skill run is awaiting a decision",
+          run_id: run.id,
+          pending: length(pending)
+        )
+
         Skills.finish_run(run, "awaiting_approval", result: result)
     end
   end
@@ -162,11 +152,10 @@ defmodule Echo.Skills.Runner do
   separate message tacked on the end.
 
   **The skill's own variables are not.** Their placeholders survive into the
-  prompt untouched and are listed below it, because a variable resolves inside
-  a *tool call* and nowhere else. That is what keeps a secret out of
-  `ai_messages`: the system prompt is stored once and replayed into every
-  subsequent model request, so a value expanded here would be re-sent for the
-  life of the conversation.
+  prompt untouched and are listed below it, because a variable resolves inside a
+  tool call and nowhere else. That is what keeps a secret out of `ai_messages`:
+  the system prompt is stored once and replayed into every subsequent model
+  request.
 
   The two namespaces are kept disjoint rather than merged: an input key that
   collides with a declared variable name is ignored, so a caller cannot use the
@@ -212,9 +201,8 @@ defmodule Echo.Skills.Runner do
   @doc """
   The first user message for a run.
 
-  Three shapes, because two callers want different things: an operator posting
-  `{"message": "..."}` means "do this", and a webhook (Phase 8) posting an issue
-  payload means "here is some data".
+  Three shapes, because two callers want different things: `{"message": "..."}`
+  means "do this", and a payload means "here is some data".
 
   The empty clause is mechanical as well as tidy: `ConversationServer` wraps the
   string as a text part with no emptiness check, and providers reject an empty
@@ -236,11 +224,8 @@ defmodule Echo.Skills.Runner do
     """
   end
 
-  # Every text part the turn produced, joined. Not strictly "the final assistant
-  # text": with a tool loop, intermediate narration is in here too. The exact
-  # alternative is re-reading the trailing model rows from `ai_messages`, which
-  # is another query for a column that is a convenience — the conversation is
-  # the actual record.
+  # Every text part the turn produced, so a tool loop's intermediate narration
+  # is in here too. A convenience column; the conversation is the real record.
   defp final_text(parts) do
     parts
     |> Enum.filter(&match?(%{"text" => text} when is_binary(text), &1))

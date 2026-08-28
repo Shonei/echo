@@ -2,14 +2,9 @@ defmodule Echo.Skills.Variable do
   use Ecto.Schema
   import Ecto.Changeset
 
-  # Declaration and binding, written by two paths that are deliberately
-  # different privileges. The builder agent (Phase 3) declares what a skill
-  # *needs*; only an operator says what fills it.
-  #
-  # A variable belongs to the skill, not to a run: one value, shared by every
-  # run of that skill. A run's own ad-hoc text reaches the transcript through
-  # the system prompt instead (see `Echo.Skills.Runner`), so nothing here is
-  # per-run.
+  # Declared and given a value by two separate paths: an agent says what a skill
+  # needs, an operator says what fills it. A variable belongs to the skill, so
+  # one value is shared by every run of it.
   schema "skill_variables" do
     field :name, :string
     field :kind, :string
@@ -18,9 +13,8 @@ defmodule Echo.Skills.Variable do
     field :required, :boolean, default: false
     field :position, :integer, default: 0
 
-    # The binding. A `secret` holds its value here in plain text for now;
-    # encrypting this column is a later change, and the only one it should
-    # take, because nothing outside `Echo.Skills.Variables` reads it.
+    # A `secret` holds its value here in plain text for now. Encrypting this
+    # column is contained: only `Echo.Skills.Variables` reads it.
     field :value, :string
 
     belongs_to :skill, Echo.Skills.Skill
@@ -28,18 +22,13 @@ defmodule Echo.Skills.Variable do
     timestamps(type: :utc_datetime)
   end
 
-  # `config` is ordinary configuration and reaches the model in a tool result
-  # like anything else. A `secret` is the same shape but never comes back: its
-  # resolved value is replaced by its placeholder in whatever the tool returned,
-  # and it is never rendered by the API.
-  #
-  # There is deliberately no `input` kind. Variables live on the skill; a run's
-  # own text is substituted into the system prompt instead.
+  # A `secret` is scrubbed out of tool results and never rendered by the API;
+  # a `config` is not. No `input` kind: a run's own text goes into the prompt.
   @kinds ~w(config secret)
   @types ~w(string number boolean)
 
   @doc """
-  What a skill needs. Reachable by the builder agent in Phase 3.
+  What a skill needs. This is what an agent's tool reaches.
 
   Does not cast `value`: an agent declaring what a skill needs must not be able
   to say what fills it. "The agent never learns the value exists" is a stronger

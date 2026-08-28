@@ -1,19 +1,11 @@
 defmodule Echo.Repo.Migrations.CreateSkills do
   use Ecto.Migration
 
-  # A skill is a preset that lives in a row rather than in a module attribute:
-  # markdown instructions, the tool names it may use, and generation config. See
-  # designs/skills.md.
+  # A skill is a preset that lives in a row: markdown instructions, the tools it
+  # may use, and generation config.
   #
-  # Integer serial primary keys, matching blogs and ai_messages. The design doc
-  # sketches uuid; nothing here needs one (no client-generated ids, single
-  # replica) and deviating would leave the schema with two id conventions.
-  # That choice propagates: trigger_id, secret_id and connection_id point at
-  # tables that arrive in Phases 8, 6 and 7, so they are plain :bigint here and
-  # gain `references/2` then, with no type change and no data migration.
-  #
-  # :text throughout rather than :string. Postgres maps :string to varchar(255)
-  # and rejects anything longer -- see 20260731110100_widen_text_columns.
+  # :text rather than :string throughout -- Postgres maps :string to
+  # varchar(255) and rejects anything longer. See widen_text_columns.
   def change do
     create table(:skills) do
       add :slug, :text, null: false
@@ -22,29 +14,18 @@ defmodule Echo.Repo.Migrations.CreateSkills do
       add :instructions, :text
 
       # What this skill may invoke, and how, keyed by tool name:
-      #
-      #   {"http_request": {"gate": "mutations", "config": {...}}}
-      #
-      # Names, never declarations -- a skill has no client, so it never needs to
-      # store a declaration it has no code for. Declarations are rendered for
-      # the skill's provider at conversation-start time.
-      #
-      # One map rather than a names array plus a gated-tools array: two columns
-      # that have to agree is a bug waiting to happen, and a per-tool setting
-      # has nowhere obvious to go.
+      # {"http_request": {"gate": "mutations", "config": {...}}}. Declarations
+      # are rendered for the provider when a run starts.
       add :tool_config, :map, null: false, default: %{}
 
-      # Fixed at creation, never updatable: capability parity between providers
-      # is not portable, so moving a skill would silently drop or substitute
-      # part of what it was approved to do. Null means Gemini, per
-      # Echo.Agents.Providers.
+      # Fixed at creation: a tool grant is not portable between providers. Null
+      # means Gemini.
       add :provider, :text
       add :model, :text
       add :temperature, :float
       add :max_output_tokens, :integer
 
-      # False stops a trigger firing it (Phase 8); a manual run still works, so
-      # a skill can be taken off its schedule and still be tested.
+      # False stops a trigger firing it; a manual run still works.
       add :enabled, :boolean, null: false, default: true
 
       timestamps(type: :utc_datetime)
@@ -55,12 +36,11 @@ defmodule Echo.Repo.Migrations.CreateSkills do
     create table(:skill_runs) do
       add :skill_id, references(:skills, on_delete: :delete_all), null: false
 
-      # Null for a manual run. Plain column until skill_triggers exists (Phase 8).
+      # Null for a manual run. Plain column until a triggers table exists.
       add :trigger_id, :bigint
 
-      # Nullable, and null on purpose between `queued` and `running`:
-      # ConversationManager.start_conversation/1 generates the conversation id
-      # itself, so the row cannot know it at insert time. The runner fills it in.
+      # Null until the runner starts a conversation: start_conversation/1
+      # generates the id itself, so the row cannot know it at insert.
       add :session_id, :text
 
       add :status, :text, null: false, default: "queued"
@@ -75,9 +55,7 @@ defmodule Echo.Repo.Migrations.CreateSkills do
 
     create index(:skill_runs, [:skill_id, :inserted_at])
     create index(:skill_runs, [:session_id])
-    # For finding the rows a redeploy stranded. designs/skills.md accepts that a
-    # restart mid-run leaves a row in `running`; an operator still has to be
-    # able to find them without a sequential scan.
+    # For finding the rows a redeploy stranded in `running`.
     create index(:skill_runs, [:status])
 
     create table(:skill_variables) do
@@ -89,10 +67,8 @@ defmodule Echo.Repo.Migrations.CreateSkills do
       add :required, :boolean, null: false, default: false
       add :position, :integer, null: false, default: 0
 
-      # The binding, written by a different path than the declaration above.
-      # A `secret` holds its value here in plain text for now; encrypting this
-      # column is a later change, and the only one it should take, because
-      # nothing outside `Echo.Skills.Variables` reads it.
+      # Written by a different path than the declaration above. A `secret` holds
+      # its value here in plain text for now.
       add :value, :text
 
       timestamps(type: :utc_datetime)

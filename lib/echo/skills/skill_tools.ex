@@ -1,20 +1,11 @@
 defmodule Echo.Skills.SkillTools do
   @moduledoc """
-  Turns a skill's stored tool *names* into the declarations
-  `Echo.Agents.ConversationManager.start_conversation/1` wants.
+  Renders a skill's tool names into provider declarations.
 
-  Echo's own tools go through `Echo.Agents.Tools.tool_config/2`, which renders
-  one canonical declaration into whichever dialect the provider speaks.
-  Provider built-ins cannot: `google_search` and `openrouter:web_search` are
-  different services reached differently and reporting differently, not two
-  spellings of one capability. So each provider's set, and each set's shape, is
-  listed here.
-
-  That list is duplicated from `EchoWeb.AgentChatController`, which is where it
-  lived first. The right long-term home is a `builtin_tools/0` callback on
-  `Echo.Agents.Provider`; that is a behaviour change with two implementations,
-  so it is deliberately not being made here. When a third consumer appears,
-  make it.
+  Echo's own tools go through `Echo.Agents.Tools.declarations/2`, which renders
+  one canonical declaration into any provider's dialect. Built-ins cannot:
+  `google_search` and `openrouter:web_search` are different services, so each
+  provider's set is listed here.
   """
 
   alias Echo.Agents.Providers.Gemini

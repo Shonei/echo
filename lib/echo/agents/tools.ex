@@ -2,18 +2,10 @@ defmodule Echo.Agents.Tools do
   @moduledoc """
   Registry of tools Echo executes itself, and the execution path for them.
 
-  Everything here runs server-side: the model emits a `functionCall`,
-  `Echo.Agents.ConversationServer` runs it through `run_all/4`, and feeds the
-  `functionResponse` straight back to the model without the client being
-  involved. Tools declared by a client (the blog editor's `edit_text`, say) are
-  not listed here, so they pass through untouched for the client to handle.
-
-  A conversation does not consult this registry while it runs. `build/2`
-  resolves a conversation's tools into `Echo.Agents.Tool` structs once, at
-  `init/1`, and everything downstream works from those. That is what gives a
-  tool somewhere to carry per-conversation settings — whether it stops for a
-  human, what it is allowed to reach — and what will let one be backed by a row
-  rather than a module without changing a single call site.
+  The model emits a `functionCall`, `Echo.Agents.ConversationServer` runs it
+  through `run_all/4`, and the `functionResponse` goes back without the client
+  being involved. Tools a client declares for itself are not listed here, so
+  they pass through untouched.
   """
 
   alias Echo.Agents.Tool
@@ -40,8 +32,8 @@ defmodule Echo.Agents.Tools do
   Builds the `tools` entry for the given tool names, ready to merge into the
   conversation opts. Returns `nil` when none of the names are known.
 
-  Declarations are written once in canonical JSON Schema; the provider wraps
-  them in its own tool syntax, so the same tool works on any backend.
+  Declarations are canonical JSON Schema; the provider wraps them in its own
+  syntax, so the same tool works on any backend.
   """
   def declarations(names, provider \\ Echo.Agents.Providers.Gemini) when is_list(names) do
     declarations =
@@ -64,15 +56,15 @@ defmodule Echo.Agents.Tools do
   `tool_config` is the authoritative statement of what Echo may execute and
   how: `%{"http_request" => %{"gate" => "mutations", "config" => %{...}}}`.
 
-  When it is absent, the toolset is **derived from the declarations** exactly as
-  it always was — every server-executed tool the conversation declared, ungated.
-  That fallback is what keeps every conversation predating this column, and
-  every caller that only sends `tools`, behaving identically.
+  When it is absent or empty, the toolset is derived from the declarations
+  instead — every server-executed tool the conversation declared, ungated. That
+  fallback is what keeps every conversation predating this column, and every
+  caller that only sends `tools`, behaving identically.
 
   A name with nothing to back it is dropped rather than kept as a broken entry.
   Keeping it would be worse than useless: an unresolvable tool looks exactly
   like a client-side one at execution time, so the call would fall through to
-  the caller and be indistinguishable from a tool waiting on a human.
+  the caller and be indistinguishable from one waiting on a human.
   """
   def build(tool_config, _declared)
       when is_map(tool_config) and map_size(tool_config) > 0 do
@@ -90,7 +82,7 @@ defmodule Echo.Agents.Tools do
   defp resolve_tool({name, settings}) when is_map(settings) do
     case executor(name, settings) do
       nil ->
-        Logger.warning("Tool #{inspect(name)} has no backend and was dropped from the toolset")
+        Logger.warning("Tool has no backend and was dropped from the toolset", tool: name)
         []
 
       executor ->
@@ -114,16 +106,14 @@ defmodule Echo.Agents.Tools do
     end
   end
 
-  # Unknown values fail closed. A gate is only writable through a changeset that
-  # validates it, so anything else here came from a hand-edited row -- and the
-  # safe reading of an unrecognised gate is "stop", not "run".
+  # Fails closed. Gates are validated on write, so anything else is a bad row.
   defp gate(nil), do: :never
   defp gate("never"), do: :never
   defp gate("mutations"), do: :mutations
   defp gate("always"), do: :always
 
   defp gate(other) do
-    Logger.warning("Unrecognised tool gate #{inspect(other)}; treating it as :always")
+    Logger.warning("Unrecognised tool gate, treating it as :always", gate: inspect(other))
     :always
   end
 
@@ -137,9 +127,8 @@ defmodule Echo.Agents.Tools do
     tools
     |> Enum.flat_map(fn
       # Gemini nests declarations; OpenRouter lists them flat. OpenRouter's own
-      # server-side tools (`openrouter:web_search`) carry no `"function"` key,
-      # so they never match here — which is right: OpenRouter resolves them
-      # itself and they must not enter Echo's tool loop.
+      # server tools carry no `"function"` key, so they never match -- it
+      # resolves those itself.
       %{"functionDeclarations" => declarations} when is_list(declarations) ->
         Enum.map(declarations, &Map.get(&1, "name"))
 
@@ -210,8 +199,7 @@ defmodule Echo.Agents.Tools do
   defp gated?(%Tool{gate: :mutations, executor: {:module, module}}, call),
     do: module.mutating?(Map.get(call, "args") || %{})
 
-  # A row-backed block has no classifier of its own, so `:mutations` can only
-  # mean "stop" for it.
+  # A row-backed block cannot classify its own calls, so `:mutations` means stop.
   defp gated?(%Tool{gate: :mutations}, _call), do: true
 
   # --- Running ---
@@ -282,9 +270,8 @@ defmodule Echo.Agents.Tools do
         {:ok, args, call_used} ->
           {:cont, {:ok, prepared ++ [{:run, Map.put(call, "args", args)}], used ++ call_used}}
 
-        # The model named a variable that does not exist. It wrote the call, so
-        # it is the one told, and the turn carries on -- the same style as every
-        # other tool failure.
+        # Answered as a tool failure so the model can react, rather than
+        # failing the turn.
         {:error, :unresolved, message} ->
           {:cont, {:ok, prepared ++ [{:refuse, call, message}], used}}
 
@@ -303,11 +290,9 @@ defmodule Echo.Agents.Tools do
 
   defp execute(%Tool{executor: {:module, module}}, args), do: module.run(args)
 
-  # Unreachable today -- `partition_calls/2` only ever returns calls it found in
-  # the toolset -- and a clear failure rather than a raise when Phase 4 adds an
-  # executor tag this clause does not know.
+  # Unreachable: `partition_calls/2` only returns calls found in the toolset.
   defp execute(other, _args) do
-    Logger.error("No way to execute #{inspect(other)}")
+    Logger.error("No way to execute tool", tool: inspect(other))
     %{"error" => "This tool is not executable."}
   end
 end
