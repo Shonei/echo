@@ -50,7 +50,7 @@ GenServer.
 | Context | Modules | Responsibility |
 |---|---|---|
 | `Echo.Agent` | `Echo.Agent`, `Echo.Agent.Message`, `Echo.Agent.ConversationRecord` | Durable conversation state: message rows (`ai_messages`) and per-conversation config (`ai_conversations`) |
-| `Echo.Agents` | `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Provider`, `Echo.Agents.Providers`, `Echo.Agents.Providers.Gemini`, `Echo.Agents.Providers.OpenRouter`, `Echo.Agents.Presets`, `Echo.Agents.Tools`, `Echo.Agents.Tools.HttpRequest`, `Echo.Agents.Tool`, `Echo.Agents.ToolBackend`, `Echo.Agents.Variables`, `Echo.Agents.VariableResolver` | Per-conversation GenServers, process lifecycle, the provider behaviour and its backends, pre-configured editor/photographer prompts and tools, server-executed tools and their per-conversation settings, late `$.name` substitution into tool arguments |
+| `Echo.Agents` | `Echo.Agents.ConversationServer`, `Echo.Agents.ConversationManager`, `Echo.Agents.Provider`, `Echo.Agents.Providers`, `Echo.Agents.Providers.Gemini`, `Echo.Agents.Providers.OpenRouter`, `Echo.Agents.Presets`, `Echo.Agents.Tools`, `Echo.Agents.Tools.HttpRequest`, the skill-authoring tools, `Echo.Agents.Tool`, `Echo.Agents.ToolBackend`, `Echo.Agents.Variables`, `Echo.Agents.VariableResolver` | Per-conversation GenServers, process lifecycle, the provider behaviour and its backends, pre-configured editor/photographer prompts and tools, server-executed tools and their per-conversation settings, late `$.name` substitution into tool arguments |
 | `Echo.Chat` | `Echo.Chat`, `Echo.Chat.Message` | Chat message CRUD |
 | `Echo.ChatRooms` | `Echo.ChatRooms`, `Echo.ChatRooms.ChatRoom` | Chat room management |
 | `Echo.Content` | `Echo.Content`, `Echo.Content.Blog`, `Echo.Content.Revision` | Blog + revision CRUD |
@@ -250,7 +250,7 @@ The project has additional documentation that may be useful for context:
 - `elixir_processes_readme.md` — Educational reference on BEAM processes, linking, and supervision
 - `docs/auth_flow.md` — Authentication flow documentation
 - `docs/blog_api.md` — Blog API documentation
-- `docs/skills_api.md` — Skills API documentation
+- `docs/skills_api.md` — Skills API documentation, including the builder agent
 - `designs/conversation_persistence.md` — Durable, resumable conversations (**implemented**)
 - `designs/openrouter_provider.md` — OpenRouter as a second provider (**implemented**)
 - `designs/skills.md` — Repeatable agent work, authored by an agent (**Phase 1 implemented**, Phases 2–9 proposed)

@@ -265,6 +265,27 @@ from skill_runs
 where status in ('queued','running') and inserted_at < now() - interval '1 hour';
 ```
 
+## Authoring a skill with an agent
+
+`POST /api/v1/ai/agents/skill_builder` starts a conversation with an agent that
+writes skills by talking to you, using the same message and content endpoints as
+any other conversation. In the browser, the **Build one with the agent** button
+on `/skills` does the same thing and drops you into the agent chat.
+
+It can create and rename skills, write their instructions, and declare their
+variables. It deliberately cannot:
+
+- **grant a skill its tools.** `tool_config` is not a field any of its tools
+  accept. A grant is what a skill can reach out and do, so it is yours to make —
+  tick the tools on the skill's page.
+- **give a variable a value.** It declares that a skill needs a GitHub token; it
+  has no way to say which one, and is never shown one.
+
+Both are withheld rather than reviewed, which is a stronger property than
+approving each change. It also means a skill can never be granted a
+skill-writing tool: those are excluded from what any skill may declare, so a
+skill cannot rewrite its own grants.
+
 ## Errors
 
 | Status | When |

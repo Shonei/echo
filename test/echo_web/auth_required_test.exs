@@ -21,6 +21,7 @@ defmodule EchoWeb.AuthRequiredTest do
     {:put, "/api/v1/ai/conversation/missing/content"},
     {:post, "/api/v1/ai/agents/editor"},
     {:post, "/api/v1/ai/agents/photographer"},
+    {:post, "/api/v1/ai/agents/skill_builder"},
     {:put, "/api/v1/assets/auth-check.txt"},
     {:delete, "/api/v1/assets/auth-check.txt"},
     {:get, "/api/v1/skills"},

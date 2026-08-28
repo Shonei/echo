@@ -9,17 +9,42 @@ defmodule Echo.Agents.Tools do
   """
 
   alias Echo.Agents.Tool
+  alias Echo.Agents.Tools.CreateSkill
+  alias Echo.Agents.Tools.DefineSkillVariables
+  alias Echo.Agents.Tools.GetSkill
   alias Echo.Agents.Tools.HttpRequest
+  alias Echo.Agents.Tools.ListSkills
+  alias Echo.Agents.Tools.UpdateSkill
+  alias Echo.Agents.Tools.UpdateSkillInstructions
   alias Echo.Agents.Variables
 
   require Logger
 
-  @backends %{"http_request" => HttpRequest}
+  @backends %{
+    "http_request" => HttpRequest,
+    "create_skill" => CreateSkill,
+    "update_skill" => UpdateSkill,
+    "update_skill_instructions" => UpdateSkillInstructions,
+    "define_skill_variables" => DefineSkillVariables,
+    "list_skills" => ListSkills,
+    "get_skill" => GetSkill
+  }
+
+  # Tools that write skills. A skill granted one of these is a careless approval
+  # away from rewriting its own grants, so they are never grantable to a skill --
+  # only to a conversation an operator started.
+  @skill_authoring ~w(create_skill update_skill update_skill_instructions
+                      define_skill_variables)
 
   @doc """
   Names of every server-executed tool.
   """
-  def names, do: Map.keys(@backends)
+  def names, do: @backends |> Map.keys() |> Enum.sort()
+
+  @doc """
+  Names a skill may be granted.
+  """
+  def skill_grantable_names, do: Enum.sort(names() -- @skill_authoring)
 
   @doc """
   The module backing a name, or `nil`.

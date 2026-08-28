@@ -57,4 +57,33 @@ defmodule Echo.Agents.PresetsTest do
       assert preset["response_modalities"] == ["TEXT", "IMAGE"]
     end
   end
+
+  describe "skill_builder/0" do
+    test "declares the skill authoring tools, rendered for the provider" do
+      assert %{"tools" => [%{"functionDeclarations" => declarations}]} = Presets.skill_builder()
+
+      assert Enum.map(declarations, & &1["name"]) |> Enum.sort() ==
+               ~w(create_skill define_skill_variables get_skill list_skills update_skill
+                  update_skill_instructions)
+    end
+
+    test "cannot grant tools or set a variable's value" do
+      %{"tools" => [%{"functionDeclarations" => declarations}]} = Presets.skill_builder()
+
+      properties =
+        declarations
+        |> Enum.flat_map(&Map.keys(&1["parameters"]["properties"] || %{}))
+        |> Enum.uniq()
+
+      refute "tool_config" in properties
+      refute "value" in properties
+    end
+
+    test "the prompt tells it what it cannot do, since the tools will not say" do
+      prompt = Presets.skill_builder()["system_prompt"]
+
+      assert prompt =~ "cannot grant a skill the tools"
+      assert prompt =~ "Only the operator can say what fills it"
+    end
+  end
 end

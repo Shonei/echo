@@ -103,6 +103,15 @@ defmodule EchoWeb.Router do
     post "/agent-chat", AgentChatController, :create
     get "/agent-chat/:id", AgentChatController, :show
 
+    get "/skills", SkillUIController, :index
+    get "/skills/:id", SkillUIController, :show
+    post "/skills/builder", SkillUIController, :builder
+    # Browsers cannot PUT from a form, so these are all POSTs -- the same
+    # workaround the asset UI uses for delete.
+    post "/skills/:id/variables/:name", SkillUIController, :bind
+    post "/skills/:id/tools", SkillUIController, :grant
+    post "/skills/:id/run", SkillUIController, :run
+
     scope "/echo" do
       get "/request", UIController, :requests
       get "/request/:id", UIController, :request_detail
@@ -155,6 +164,7 @@ defmodule EchoWeb.Router do
       put "/conversation/:id/content", AIConversationController, :content
       post "/agents/editor", AIConversationController, :editor
       post "/agents/photographer", AIConversationController, :photographer
+      post "/agents/skill_builder", AIConversationController, :skill_builder
     end
   end
 

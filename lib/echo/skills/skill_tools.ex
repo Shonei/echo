@@ -36,12 +36,11 @@ defmodule Echo.Skills.SkillTools do
   @doc """
   Every name a skill on this provider may declare.
 
-  This is the allow-list a skill's `tools` column is validated against, which is
-  also what keeps `run_elixir` and the skill-writing tools out of a skill's own
-  list: they are not registered in `Echo.Agents.Tools` and are not built-ins, so
-  they are rejected by construction rather than by a denylist.
+  The allow-list a skill's `tool_config` is validated against. Skill-writing
+  tools are excluded: a skill granted one could rewrite its own grants.
   """
-  def known_names(provider_module), do: Tools.names() ++ builtin_names(provider_module)
+  def known_names(provider_module),
+    do: Tools.skill_grantable_names() ++ builtin_names(provider_module)
 
   @doc """
   Renders a skill's `tool_config` into the `tools` conversation opt, or `nil`
