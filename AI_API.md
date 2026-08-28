@@ -32,13 +32,16 @@ Starts a new stateful AI conversation.
   "thinking_enabled": false,                     // default is false; Gemini only
   "thinking_budget": 512,                        // Gemini only
   "response_modalities": ["TEXT"],               // Gemini only, e.g. ["TEXT", "IMAGE"]
-  "tools": []                                    // list of tool definition maps
+  "tools": [],                                   // list of tool definition maps
+  "variable_scope": null                         // see below; skills set this
 }
 ```
 
 `model` defaults to `GEMINI_MODEL` on Gemini. **OpenRouter has no default** — it fronts hundreds of models, so an `openrouter` conversation must name one (e.g. `"openai/gpt-5.6-luna"`) or every message will fail with `missing_model`.
 
 `thinking_enabled`, `thinking_budget`, and `response_modalities` are not mapped for OpenRouter; setting them is logged and ignored rather than silently honoured.
+
+`variable_scope` names where this conversation's `$.name` placeholders resolve from, as an opaque token. `Echo.Skills` sets it when it runs a skill (`"skill_run:42"`); ordinary callers leave it out, and then a `$.` in a tool argument is passed through as literal text — which is what keeps jq paths working. See `docs/skills_api.md`.
 
 **Response (`201 Created`):**
 Returns the generated conversation ID.
