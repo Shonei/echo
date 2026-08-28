@@ -38,11 +38,16 @@ defmodule EchoWeb.SkillVariableJSON do
       description: variable.description,
       required: variable.required,
       position: variable.position,
-      # In Phase 6 this becomes conditional on kind: a secret's value is never
-      # rendered, only whether it is bound.
-      value: variable.value,
+      # A secret's value is never rendered -- only whether it has one. That
+      # holds whether or not the column is encrypted, so encrypting it later
+      # changes nothing here.
+      value: rendered_value(variable),
+      bound: not is_nil(variable.value),
       created_at: variable.inserted_at,
       updated_at: variable.updated_at
     }
   end
+
+  defp rendered_value(%Variable{kind: "secret"}), do: nil
+  defp rendered_value(%Variable{value: value}), do: value
 end

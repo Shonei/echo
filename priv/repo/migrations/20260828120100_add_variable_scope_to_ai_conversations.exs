@@ -14,7 +14,8 @@ defmodule Echo.Repo.Migrations.AddVariableScopeToAiConversations do
   # other way, and cannot be looked up in time --
   # `ConversationManager.start_conversation/1` generates the session id itself
   # and runs `init/1` synchronously inside that call, so the run row has no
-  # session id yet when the first tool round executes.
+  # session id yet when the first tool round executes. Today it holds
+  # `"skill:<id>"`, since variables belong to the skill.
   #
   # Null means "no variables", which is every conversation predating this and
   # every plain agent chat. That is a fast path, not a special case: no scope

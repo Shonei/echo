@@ -64,12 +64,11 @@ the author approves anything dangerous, and later fired by a trigger.
 
 Three tables in Phase 1 — `skills`, `skill_runs`, `skill_variables` — and
 everything else is the conversation machinery that already exists. The rest
-arrive with the phase that needs them: `skill_code_blocks` in Phase 4,
-`secrets` in Phase 6, `oauth_clients` and `oauth_connections` in Phase 7, and
-`skill_triggers` in Phase 8, which is left unspecified until then.
+arrive with the phase that needs them: `skill_code_blocks` in Phase 4, and
+`skill_triggers` in Phase 7, which is left unspecified until then.
 
-The columns below that point at a later table are plain `uuid`s in Phase 1 and
-gain their foreign key when that table exists, so Phase 1 migrates on its own.
+`skill_runs.trigger_id` is a plain `bigint` until Phase 7 creates the table it
+points at, so Phase 1 migrates on its own.
 
 ```
 skills
@@ -173,7 +172,7 @@ skill_runs
   skill_id      references skills
   trigger_id    bigint, nullable    -- null for a manual run. Plain column in
                                     --  Phase 1; the FK to skill_triggers is
-                                    --  added in Phase 8 when that table exists
+                                    --  added in Phase 7 when that table exists
   session_id    text, nullable      -- the ai_conversations / ai_messages id.
                                     --  Null until the run's task has started a
                                     --  conversation: start_conversation/1
@@ -193,39 +192,29 @@ The conversation is where the actual work is recorded, and `session_id` is the
 join to it.
 
 ```
-skill_variables            -- declaration and binding, written by two paths
+skill_variables            -- declaration and value, written by two paths
   id            bigserial
   skill_id      references skills
   name          text     -- ^[a-z_][a-z0-9_]*$, referenced as $.name
-  kind          text     -- config | input today; secret and oauth are rejected
-                         --  until Phases 6 and 7, since such a row could only
-                         --  ever be unbound
+  kind          text     -- config | secret
   type          text     -- string | number | boolean
   description   text     -- shown to the model and to whoever fills it in
   required      boolean
   position      integer  -- stable ordering for forms
-  oauth_provider text    -- kind=oauth: which provider it wants, e.g. "github".
-                         --  Named apart from skills.provider, which is a model
-                         --  backend -- two unrelated meanings of one word
-
-  -- Both are plain columns in Phase 1; the FKs and the tables they point at
-  -- arrive with the phase that introduces them.
-  secret_id     bigint   -- kind=secret. FK to secrets in Phase 6
-  connection_id bigint   -- kind=oauth. FK to oauth_connections in Phase 7
-  value         text     -- kind=config: the literal
-  timestamps
-
-secrets                    -- global, not per-skill. Phase 6.
-  id              bigserial
-  name            text, unique     -- github_api_key
-  description     text
-  encrypted_value binary
-  last_used_at    utc_datetime
+  value         text     -- the literal. A secret's is plain text for now;
+                         --  encrypting this column is a later change, and a
+                         --  contained one, since only Echo.Skills.Variables
+                         --  reads it and the API never renders it
   timestamps
 ```
 
-`input` variables have neither column: their values arrive per run in
-`skill_runs.input`.
+**Variables belong to the skill, not to a run.** One value, shared by every run
+of it. There is no per-run override and no `input` kind: a run's own text
+reaches the transcript by being substituted into the system prompt instead (see
+[Running a skill](#running-a-skill)), which keeps the two namespaces disjoint.
+
+That is also why a conversation's scope names the **skill** — `"skill:12"` —
+rather than the run.
 
 See [Variables and secrets](#variables-and-secrets) for how these are resolved.
 
@@ -489,23 +478,36 @@ variable *bindings*, and the difference is the point:
 ## Variables and secrets
 
 A skill declares the variables it needs, and the builder agent writes that
-schema alongside the instructions. Three kinds:
+schema alongside the instructions. Two kinds:
 
-| Kind | Set by | Resolved from | Example |
+| Kind | Reaches the model | Rendered by the API | Example |
 |---|---|---|---|
-| `secret` | operator, once | the secret store | `$.github_api_key` |
-| `config` | operator, once | the `value` column | `$.repo_name` |
-| `input` | the trigger, per run | the run's `input` map | `$.issue_number` |
+| `config` | in a tool result, like anything else | yes | `$.repo_name` |
+| `secret` | never — replaced by its placeholder on the way back | never, only whether it has a value | `$.github_api_key` |
 
-The agent references them by name in tool arguments — `$.github_api_key` — and
-the placeholder is resolved **server-side, immediately before the tool runs**.
+Both live on the skill and are set once by an operator. The agent references
+them by name in a tool argument — `$.github_api_key` — and the placeholder is
+resolved **server-side, immediately before the tool runs**.
+
+**A variable never resolves in the instructions.** A skill body reading
+`"Report on $.repo_name"` reaches the model with the placeholder intact. That
+looks like a limitation and is the point: the system prompt is stored once and
+replayed into every subsequent model request, so a value expanded there would be
+re-sent for the life of the conversation. What the model gets instead is a block
+naming the variables that exist, with their kinds and descriptions.
+
+**A secret's value is stored in plain text today.** Encrypting
+`skill_variables.value` is a later change and a deliberately contained one:
+`Echo.Skills.Variables` is the only reader, and the API already renders nothing
+but `bound: true`. Getting the shape right first is worth more than encrypting
+a shape that is still moving.
 
 ### Two writers, one row
 
 The builder agent declares what a skill *needs*. Only an operator says what
 actually fills it. Those are different privileges: a tool that could do both
-could point a skill at any secret in the store, which is the same
-privilege-escalation shape as a sub-agent granting itself its parent's tools.
+could write a skill its own credentials, which is the same privilege-escalation
+shape as a sub-agent granting itself its parent's tools.
 
 So `skill_variables` is written through two changesets, following the split
 already used for blogs (`lib/echo/content/blog.ex:52`, where content is only
@@ -513,16 +515,17 @@ writable via `Echo.Content.update_blog_content/2`):
 
 - **`declaration_changeset`** casts `name`, `kind`, `type`, `description`,
   `required`, `position`. This is what the builder agent's tool reaches.
-- **`binding_changeset`** casts `secret_id` and `value`, and is reachable only
-  from the operator API and UI. No agent tool calls it.
+- **`binding_changeset`** casts `value`, and is reachable only from the operator
+  API and UI. No agent tool calls it.
 
 An agent can therefore say *"this skill needs a GitHub token with repo scope"*
-and cannot say *"and here is which one to use"*.
+and cannot say what that token is.
 
-**Secrets are global, not per-skill**, because one `github_api_key` is
-realistically shared by several skills and rotating it should be one edit
-rather than a hunt. That also keeps encryption in a single table, and gives
-`last_used_at` somewhere honest to live.
+One narrow exception exists so the split cannot be walked around: redeclaring a
+`secret` as a `config` clears the value. Declaration is agent-reachable, so
+without it an agent could expose a stored secret by rewriting its kind rather
+than by reading it. The reverse direction keeps the value, since it only adds
+protection.
 
 ### Defining the schema
 
@@ -605,11 +608,16 @@ a closer read at approval time than blocks that do not.
 
 ## OAuth2 clients and connections
 
-Most integrations do not need this. A GitHub PAT, a Stripe key, a Linear API
-key — all of those are just secrets, and Phase 6 covers them. OAuth2 is for
-when a provider will not issue a long-lived key, or when Echo must act as an
-account rather than as itself. It is a separate phase because it is a separate
-subsystem, not a variety of secret.
+> **Parked, and possibly for good.** Not a phase, not scheduled, and no
+> `kind: oauth` exists. Most integrations do not need it: a GitHub PAT, a Stripe
+> key, a Linear API key are all just `secret` variables. What follows is the
+> analysis as it stood, kept because it is the expensive part to redo — if a
+> provider ever refuses to issue a long-lived key, start here rather than from
+> nothing. Nothing else in this document depends on it.
+
+OAuth2 is for when a provider will not issue a long-lived key, or when Echo must
+act as an account rather than as itself. It is a separate subsystem, not a
+variety of secret.
 
 It has three layers, and conflating them is the usual way this goes wrong:
 
@@ -878,8 +886,8 @@ Variables are here rather than with secrets because a skill without parameters
 is barely a skill, and because building substitution and scrubbing once —
 against `config` and `input` variables, which are not sensitive — means the
 security-critical plumbing is written and tested *before* there is anything
-secret flowing through it. Phase 6 then adds the `secrets` table, the FK, and a
-resolver backend behind the interface Phase 1 already calls.
+secret flowing through it. Phase 6 then encrypts the column behind the resolver
+Phase 1 already calls, and changes nothing else.
 
 **One thing this design did not anticipate: the pointer has to go the other
 way.** `skill_runs.session_id` names a run's conversation, but
@@ -939,30 +947,27 @@ Independent of Phase 4, so the two can swap freely.
 
 See [Sub-agents](#sub-agents) for the constraints, which are not obvious.
 
-**Phase 6 — Secrets and the first real tools.** Encrypted storage behind the
-`secret_id` resolver Phase 1 already calls, a secrets admin UI, and the
-integrations a plain API key unlocks — which is most of them. A skill that can
-only make anonymous HTTP requests cannot do much, so capability comes before
-automation.
+**Phase 6 — Encryption and the first real tools.** `skill_variables.value` is
+plain text today. Encrypting it is contained — `Echo.Skills.Variables` is the
+only reader and the API renders nothing but `bound: true` — so it is worth doing
+once the shape has stopped moving rather than before.
+
+The larger half of this phase is the integrations a stored key unlocks, which is
+most of them. A skill that can only make anonymous HTTP requests cannot do much,
+so capability comes before automation.
 
 One tool here is a prerequisite rather than a nicety: **something a skill can
 report through** — mail, chat, or an outbound webhook. A scheduled skill with no
 output channel produces nothing anyone sees, so Phases 8 and 9 deliver very
 little without it.
 
-**Phase 7 — OAuth2.** `oauth_clients` and `oauth_connections`, the connect and
-callback flow, refresh with row-level locking, the `list_integrations` tool, and
-the three admin screens. Deliberately after Phase 6 and separable from it: a
-stored API key covers most providers, and this is only needed where one will not
-be issued. See [OAuth2 clients and connections](#oauth2-clients-and-connections).
-
-**Phase 8 — Triggers: manual and webhook.** The `skill_triggers` table, a
+**Phase 7 — Triggers: manual and webhook.** The `skill_triggers` table, a
 `create_trigger` builder tool, a UI button that takes an optional instruction,
 and a webhook endpoint. The webhook reuses the `AcceptAny` + `CacheRawBody`
 plugs from the existing echo sink so an HMAC can be computed over the exact
 bytes received.
 
-**Phase 9 — Cron triggers.** A self-scheduling GenServer in the house style of
+**Phase 8 — Cron triggers.** A self-scheduling GenServer in the house style of
 `Echo.Requests.RequestCleanupJob`, which re-arms itself with
 `Process.send_after/3` after each tick
 (`lib/echo/requests/request_cleanup_job.ex:61-62`), ticking against a
@@ -983,7 +988,7 @@ read back from the row.
 nobody else can reach the UI or mint a token — so "a malicious user asks the
 agent to misbehave" is not a threat here. What remains is everything the agent
 *reads*: a webhook payload carries issue bodies and commit messages that anyone
-can write, and a fetched page says whatever its author wanted. Phase 8 needs
+can write, and a fetched page says whatever its author wanted. Phase 7 needs
 the prompt-injection guard the editor preset already uses — payload is material
 to act on, never instructions to follow (`lib/echo/agents/presets.ex:26-30`) —
 and a skill's tool grants must never be derived from the payload that triggered
@@ -1028,11 +1033,11 @@ that, and they want different treatment:
 and drops the implicit and password grants, so building as if it were already
 required costs nothing and dates better.
 
-**A revoked grant is invisible until something uses it.** Nothing polls
-connection health, so a revoked GitHub app stays `active` in the UI until the
-next run fails on it. Given scheduled runs, that gap can be days. A periodic
-check is straightforward once there is a scheduler in Phase 9; before that, the
-connections screen is the only signal and it only updates on use.
+**A revoked credential is invisible until something uses it.** Nothing checks
+whether a stored key still works, so a revoked one looks fine until the next run
+fails on it. Given scheduled runs, that gap can be days. A periodic check is
+straightforward once there is a scheduler in Phase 8; before that, a failed run
+is the only signal.
 
 **The model chooses where a secret goes.** It writes `$.github_api_key` into an
 argument, and the server resolves it wherever it was written — which means a
@@ -1057,9 +1062,8 @@ whose loss actually costs money or correctness, and that is when Oban earns its
 place — not before.
 
 **Single replica is assumed.** Nothing here guards against two nodes running
-the same cron tick or the same run. That assumption is load-bearing by Phase 9
-and should be revisited before a second replica exists — though OAuth refresh
-takes a row lock rather than relying on it, since that failure is permanent.
+the same cron tick or the same run. That assumption is load-bearing by Phase 8
+and should be revisited before a second replica exists.
 
 **A sub-agent is not a sub-skill.** Phase 5 lets an agent spawn a child by
 handing it a prompt and a tool subset. It deliberately does *not* let a skill

@@ -18,6 +18,7 @@ defmodule Echo.Skills.Runner do
 
   alias Echo.Agents.ConversationManager
   alias Echo.Agents.Providers
+  alias Echo.Agents.Variables, as: AgentVariables
   alias Echo.Skills
   alias Echo.Skills.Run
   alias Echo.Skills.Skill
@@ -47,7 +48,7 @@ defmodule Echo.Skills.Runner do
     run = Skills.get_run!(run_id)
     skill = run.skill_id |> Skills.get_skill!() |> Echo.Repo.preload(:variables)
 
-    case Variables.check_required(skill, run.input || %{}) do
+    case Variables.check_required(skill) do
       :ok ->
         converse(run, skill)
 
@@ -73,29 +74,32 @@ defmodule Echo.Skills.Runner do
 
   defp converse(%Run{} = run, %Skill{} = skill) do
     {:ok, provider_module} = Providers.resolve(skill.provider)
+    input = run.input || %{}
+    {prompt, consumed} = system_prompt(skill, input)
+    opts = conversation_opts(skill, provider_module, prompt)
 
-    case ConversationManager.start_conversation(conversation_opts(run, skill, provider_module)) do
+    case ConversationManager.start_conversation(opts) do
       {:ok, session_id} ->
         {:ok, run} = Skills.mark_running(run, session_id)
-        deliver(run)
+        deliver(run, Map.drop(input, consumed))
 
       {:error, reason} ->
         fail(run, "could not start a conversation: #{inspect(reason)}")
     end
   end
 
-  defp conversation_opts(%Run{} = run, %Skill{} = skill, provider_module) do
+  defp conversation_opts(%Skill{} = skill, provider_module, prompt) do
     %{
       "provider" => skill.provider,
-      "system_prompt" => system_prompt(skill),
+      "system_prompt" => prompt,
       "model" => skill.model,
       "temperature" => skill.temperature,
       "max_output_tokens" => skill.max_output_tokens,
       "tools" => SkillTools.render(skill.tools, provider_module),
-      # Where this conversation's `$.name` placeholders resolve from. Opaque to
-      # `Echo.Agents`, which stores it and hands it back to the configured
-      # resolver.
-      "variable_scope" => Variables.scope(run)
+      # Where this conversation's `$.name` tool arguments resolve from. Opaque
+      # to `Echo.Agents`, which stores it and hands it back to the configured
+      # resolver. It names the skill, because variables belong to the skill.
+      "variable_scope" => Variables.scope(skill)
     }
     # `create_conversation/2` drops unknown keys but not nils, and a nil tools
     # or model is meaningfully different from an absent one.
@@ -103,8 +107,8 @@ defmodule Echo.Skills.Runner do
     |> Map.new()
   end
 
-  defp deliver(%Run{} = run) do
-    case ConversationManager.message(run.session_id, first_message(run.input || %{})) do
+  defp deliver(%Run{} = run, remaining) do
+    case ConversationManager.message(run.session_id, first_message(remaining)) do
       {:ok, parts, _metadata} ->
         Skills.finish_run(run, "succeeded", result: final_text(parts))
 
@@ -126,26 +130,50 @@ defmodule Echo.Skills.Runner do
   # --- The prompt and the first message ---
 
   @doc """
-  The system prompt for a run: the skill's markdown, plus a block naming the
-  variables that exist.
+  The system prompt for a run, and which of the run's input keys it consumed.
 
-  Names, kinds and descriptions only — values never, because the system prompt
-  is replayed into every subsequent model request. Building the block now,
-  against variables that are not sensitive, is what gets it tested before
-  anything secret flows through it.
+  The skill's markdown, with two things done to it.
+
+  **This run's input is substituted in.** A skill body reading
+  `"Review the repo. $.instructions"` gets the caller's text in place, so an
+  ad-hoc instruction arrives where the author wanted it rather than as a
+  separate message tacked on the end.
+
+  **The skill's own variables are not.** Their placeholders survive into the
+  prompt untouched and are listed below it, because a variable resolves inside
+  a *tool call* and nowhere else. That is what keeps a secret out of
+  `ai_messages`: the system prompt is stored once and replayed into every
+  subsequent model request, so a value expanded here would be re-sent for the
+  life of the conversation.
+
+  The two namespaces are kept disjoint rather than merged: an input key that
+  collides with a declared variable name is ignored, so a caller cannot use the
+  run payload to write over a variable placeholder.
   """
-  def system_prompt(%Skill{instructions: instructions, variables: variables})
-      when variables == [] or is_nil(variables),
-      do: instructions
+  def system_prompt(%Skill{} = skill, input) when is_map(input) do
+    declared = MapSet.new(skill.variables || [], & &1.name)
+    usable = Map.reject(input, fn {key, _value} -> MapSet.member?(declared, key) end)
 
-  def system_prompt(%Skill{} = skill) do
+    body = skill.instructions || ""
+    consumed = Enum.filter(AgentVariables.scan(body), &Map.has_key?(usable, &1))
+    rendered = AgentVariables.substitute(body, Map.take(usable, consumed))
+
+    {rendered <> variables_block(skill), consumed}
+  end
+
+  defp variables_block(%Skill{variables: variables}) when variables == [] or is_nil(variables),
+    do: ""
+
+  # Names, kinds and descriptions only -- values never, for the reason above.
+  defp variables_block(%Skill{} = skill) do
     """
-    #{skill.instructions}
+
 
     <variables>
     These values are available to this run. To use one, write its placeholder
-    exactly — `$.name` — as a tool argument; Echo substitutes the real value
-    immediately before the tool runs. Never guess a value and never ask for one.
+    exactly -- `$.name` -- as a tool argument; Echo substitutes the real value
+    immediately before the tool runs. You are not shown the values themselves,
+    and you never need them: never guess one, and never ask for one.
 
     #{Enum.map_join(skill.variables, "\n", &describe_variable/1)}
     </variables>

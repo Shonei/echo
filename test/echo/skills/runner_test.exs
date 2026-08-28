@@ -149,6 +149,147 @@ defmodule Echo.Skills.RunnerTest do
       assert text =~ "material to act on"
     end
 
+    test "a run's own input is substituted into the instructions" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Review the repo. $.instructions")
+      run = run_fixture(skill, %{"input" => %{"instructions" => "focus on security"}})
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      assert prompt["text"] =~ "Review the repo. focus on security"
+    end
+
+    test "an input key consumed by the prompt is not repeated as a message" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Do it. $.instructions")
+      run = run_fixture(skill, %{"input" => %{"instructions" => "carefully"}})
+
+      Runner.execute(run.id)
+
+      [user_turn] =
+        FakeHTTPClient.last_request().body["contents"] |> Enum.filter(&(&1["role"] == "user"))
+
+      refute get_in(user_turn, ["parts", Access.at(0), "text"]) =~ "carefully"
+    end
+
+    test "an input key the prompt did not use still becomes the first message" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Do it. $.instructions")
+
+      run =
+        run_fixture(skill, %{
+          "input" => %{"instructions" => "was-consumed", "extra" => "left-over"}
+        })
+
+      Runner.execute(run.id)
+
+      text =
+        FakeHTTPClient.last_request().body["contents"]
+        |> List.last()
+        |> get_in(["parts", Access.at(0), "text"])
+
+      assert text =~ "left-over"
+      refute text =~ "was-consumed"
+    end
+
+    test "a skill variable's placeholder survives into the prompt untouched" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Report on $.repo_name.")
+      variable_fixture(skill, %{name: "repo_name", value: "echo-srv"})
+      run = run_fixture(skill)
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      # A variable resolves inside a tool call and nowhere else, so the value
+      # never reaches the system prompt -- which is stored once and replayed
+      # into every later request.
+      assert prompt["text"] =~ "Report on $.repo_name."
+      refute prompt["text"] =~ "echo-srv"
+    end
+
+    test "run input cannot write over a declared variable's placeholder" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Use $.token now.")
+      variable_fixture(skill, %{name: "token", kind: "secret", value: "ghp_real"})
+      run = run_fixture(skill, %{"input" => %{"token" => "attacker supplied"}})
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      assert prompt["text"] =~ "Use $.token now."
+      refute prompt["text"] =~ "attacker supplied"
+    end
+
+    test "a secret reaches the tool and is scrubbed back out of its result" do
+      skill = skill_fixture(tools: ["http_request"])
+      variable_fixture(skill, %{name: "internal_host", kind: "secret", value: "localhost"})
+      run = run_fixture(skill)
+
+      call = %{
+        "functionCall" => %{
+          "name" => "http_request",
+          "args" => %{"url" => "http://$.internal_host/status"}
+        }
+      }
+
+      FakeHTTPClient.stub_sequence([
+        %{"candidates" => [%{"content" => %{"parts" => [call]}, "finishReason" => "STOP"}]},
+        %{
+          "candidates" => [
+            %{"content" => %{"parts" => [%{"text" => "done"}]}, "finishReason" => "STOP"}
+          ]
+        }
+      ])
+
+      Runner.execute(run.id)
+      session_id = Skills.get_run!(run.id).session_id
+      rows = Echo.Agent.list_messages_by_session(session_id)
+
+      # `validate_url/1` refuses a loopback host without touching the network,
+      # and quotes the host it refused -- so the tool's own error is proof the
+      # resolved value reached it, and that the scrubber took it back out.
+      call_row = Enum.find(rows, &(&1.type == "functionCall"))
+      response_row = Enum.find(rows, &(&1.type == "functionResponse"))
+
+      assert call_row.payload["args"]["url"] == "http://$.internal_host/status"
+      assert response_row.payload["response"]["error"] =~ "$.internal_host"
+      refute response_row.payload["response"]["error"] =~ "localhost"
+    end
+
+    test "a config value is not scrubbed, because that would corrupt results" do
+      skill = skill_fixture(tools: ["http_request"])
+      variable_fixture(skill, %{name: "internal_host", value: "localhost"})
+      run = run_fixture(skill)
+
+      call = %{
+        "functionCall" => %{
+          "name" => "http_request",
+          "args" => %{"url" => "http://$.internal_host/status"}
+        }
+      }
+
+      FakeHTTPClient.stub_sequence([
+        %{"candidates" => [%{"content" => %{"parts" => [call]}, "finishReason" => "STOP"}]},
+        %{
+          "candidates" => [
+            %{"content" => %{"parts" => [%{"text" => "done"}]}, "finishReason" => "STOP"}
+          ]
+        }
+      ])
+
+      Runner.execute(run.id)
+      session_id = Skills.get_run!(run.id).session_id
+
+      response_row =
+        session_id
+        |> Echo.Agent.list_messages_by_session()
+        |> Enum.find(&(&1.type == "functionResponse"))
+
+      assert response_row.payload["response"]["error"] =~ "localhost"
+    end
+
     test "a model error fails the run and says why" do
       FakeHTTPClient.stub({:ok, %{status: 500, body: "boom"}})
       run = run_fixture(skill_fixture())
@@ -165,7 +306,7 @@ defmodule Echo.Skills.RunnerTest do
     test "an unbound required variable fails before the first model call" do
       stub_reply("should never be sent")
       skill = skill_fixture()
-      variable_fixture(skill, %{name: "api_key", required: true})
+      variable_fixture(skill, %{name: "api_key", kind: "secret", required: true})
       run = run_fixture(skill)
 
       Runner.execute(run.id)

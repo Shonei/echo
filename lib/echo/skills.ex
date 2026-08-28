@@ -128,11 +128,15 @@ defmodule Echo.Skills do
   easier for a model to get right in Phase 3 and it is idempotent when the agent
   retries.
 
-  Bindings survive for any variable whose `name` is unchanged — the row is
-  updated, and `declaration_changeset/2` does not cast `value`, so a binding is
-  never in the changeset to be lost. A variable that disappears takes its
-  binding with it, and one whose `kind` changes has its binding cleared: a
-  `value` left on what is now an `input` variable would never be read again.
+  Values survive for any variable whose `name` is unchanged — the row is
+  updated, and `declaration_changeset/2` does not cast `value`, so a value is
+  never in the changeset to be lost. A variable that disappears takes its value
+  with it.
+
+  One narrow exception: redeclaring a `secret` as a `config` clears the value.
+  This path is agent-reachable in Phase 3, and without it an agent could expose
+  a stored secret through the API by rewriting its kind. Going the other way
+  keeps the value, since that only ever adds protection.
 
   `position` comes from list order, so ordering is a property of the call.
 
@@ -177,29 +181,28 @@ defmodule Echo.Skills do
     end)
   end
 
-  # The one place `declaration_changeset/2` is allowed to touch a binding, and
-  # it only ever removes one — so the write split still holds.
-  defp clear_binding_on_kind_change(changeset, %Variable{kind: kind}) when is_binary(kind) do
+  # The one place `declaration_changeset/2` is allowed to touch a value, and it
+  # only ever removes one — so the write split still holds. Only the
+  # secret-to-config direction, which is the one that would otherwise turn a
+  # stored secret into something the API renders.
+  defp clear_binding_on_kind_change(changeset, %Variable{kind: "secret"}) do
     case Ecto.Changeset.get_change(changeset, :kind) do
       nil -> changeset
-      ^kind -> changeset
-      _changed -> Ecto.Changeset.force_change(changeset, :value, nil)
+      "secret" -> changeset
+      _downgraded -> Ecto.Changeset.force_change(changeset, :value, nil)
     end
   end
 
   defp clear_binding_on_kind_change(changeset, _base), do: changeset
 
-  defp bound?(%Variable{kind: "config", value: value}), do: not is_nil(value)
-  # An `input` variable is bound per run, so it is never unbound at rest.
-  defp bound?(%Variable{kind: "input"}), do: true
-  defp bound?(_variable), do: false
+  defp bound?(%Variable{value: value}), do: not is_nil(value)
 
   defp stringify(attrs) do
     Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
   end
 
   @doc """
-  Binds a `config` variable to a literal value.
+  Gives a variable its value.
 
   Operator-only. No agent tool reaches this — see `Echo.Skills.Variable`.
   """
@@ -236,7 +239,7 @@ defmodule Echo.Skills do
   def run_skill(%Skill{} = skill, input \\ %{}) when is_map(input) do
     skill = Repo.preload(skill, :variables)
 
-    with :ok <- Variables.check_required(skill, input),
+    with :ok <- Variables.check_required(skill),
          {:ok, run} <- insert_run(skill, input),
          {:ok, _pid} <- Echo.Skills.Runner.start(run) do
       {:ok, run}

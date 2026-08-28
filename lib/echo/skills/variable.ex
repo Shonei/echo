@@ -4,8 +4,12 @@ defmodule Echo.Skills.Variable do
 
   # Declaration and binding, written by two paths that are deliberately
   # different privileges. The builder agent (Phase 3) declares what a skill
-  # *needs*; only an operator says what fills it. A tool that could do both
-  # could point a skill at any secret in the store.
+  # *needs*; only an operator says what fills it.
+  #
+  # A variable belongs to the skill, not to a run: one value, shared by every
+  # run of that skill. A run's own ad-hoc text reaches the transcript through
+  # the system prompt instead (see `Echo.Skills.Runner`), so nothing here is
+  # per-run.
   schema "skill_variables" do
     field :name, :string
     field :kind, :string
@@ -13,11 +17,10 @@ defmodule Echo.Skills.Variable do
     field :description, :string
     field :required, :boolean, default: false
     field :position, :integer, default: 0
-    field :oauth_provider, :string
 
-    # Bindings. secret_id/connection_id are plain integers until Phases 6/7.
-    field :secret_id, :id
-    field :connection_id, :id
+    # The binding. A `secret` holds its value here in plain text for now;
+    # encrypting this column is a later change, and the only one it should
+    # take, because nothing outside `Echo.Skills.Variables` reads it.
     field :value, :string
 
     belongs_to :skill, Echo.Skills.Skill
@@ -25,19 +28,22 @@ defmodule Echo.Skills.Variable do
     timestamps(type: :utc_datetime)
   end
 
-  # `secret` and `oauth` are in designs/skills.md and deliberately not accepted
-  # yet: there is no secrets table (Phase 6) and no oauth_connections (Phase 7),
-  # so such a row could only ever be unbound. Rejecting it here is what lets the
-  # resolver stay total.
-  @kinds ~w(config input)
+  # `config` is ordinary configuration and reaches the model in a tool result
+  # like anything else. A `secret` is the same shape but never comes back: its
+  # resolved value is replaced by its placeholder in whatever the tool returned,
+  # and it is never rendered by the API.
+  #
+  # There is deliberately no `input` kind. Variables live on the skill; a run's
+  # own text is substituted into the system prompt instead.
+  @kinds ~w(config secret)
   @types ~w(string number boolean)
 
   @doc """
   What a skill needs. Reachable by the builder agent in Phase 3.
 
-  Casts neither `value`, `secret_id` nor `connection_id`: "the agent never
-  learns secret ids exist" is a stronger property than "the agent proposes and
-  a human checks".
+  Does not cast `value`: an agent declaring what a skill needs must not be able
+  to say what fills it. "The agent never learns the value exists" is a stronger
+  property than "the agent proposes and a human checks".
   """
   def declaration_changeset(variable, attrs) do
     variable
@@ -55,24 +61,13 @@ defmodule Echo.Skills.Variable do
   @doc """
   What actually fills it. Operator API and UI only; no agent tool calls this.
 
-  Phase 6 adds `:secret_id` to the cast list and nothing else changes.
+  Encrypting `value` later is a change to this function and to
+  `Echo.Skills.Variables`, and to nothing else.
   """
   def binding_changeset(variable, attrs) do
     variable
     |> cast(attrs, [:value])
-    |> validate_bindable()
     |> validate_value_matches_type()
-  end
-
-  # An `input` variable's value arrives per run in `skill_runs.input`, so
-  # binding one is a category error rather than a no-op. Say so, instead of
-  # storing a value that will never be read.
-  defp validate_bindable(changeset) do
-    case get_field(changeset, :kind) do
-      "config" -> changeset
-      nil -> changeset
-      kind -> add_error(changeset, :value, "cannot be bound on a #{kind} variable")
-    end
   end
 
   # Values are stored as text whatever the declared type, so the parse has to

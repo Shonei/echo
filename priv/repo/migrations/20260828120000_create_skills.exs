@@ -82,14 +82,10 @@ defmodule Echo.Repo.Migrations.CreateSkills do
       add :required, :boolean, null: false, default: false
       add :position, :integer, null: false, default: 0
 
-      # kind=oauth. Named apart from skills.provider, which is a model backend --
-      # two unrelated meanings of one word.
-      add :oauth_provider, :text
-
-      # Bindings, written by a different path than the declaration above.
-      # Plain columns; the FKs arrive with the tables they point at.
-      add :secret_id, :bigint
-      add :connection_id, :bigint
+      # The binding, written by a different path than the declaration above.
+      # A `secret` holds its value here in plain text for now; encrypting this
+      # column is a later change, and the only one it should take, because
+      # nothing outside `Echo.Skills.Variables` reads it.
       add :value, :text
 
       timestamps(type: :utc_datetime)

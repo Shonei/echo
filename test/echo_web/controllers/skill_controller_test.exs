@@ -133,12 +133,12 @@ defmodule EchoWeb.SkillControllerTest do
         |> put(~p"/api/v1/skills/#{skill.id}/variables", %{
           "variables" => [
             %{"name" => "repo", "kind" => "config", "required" => true},
-            %{"name" => "issue", "kind" => "input"}
+            %{"name" => "token", "kind" => "secret"}
           ]
         })
         |> json_response(200)
 
-      assert Enum.map(declared["data"], & &1["name"]) == ~w(repo issue)
+      assert Enum.map(declared["data"], & &1["name"]) == ~w(repo token)
       assert declared["unbound"] == ["repo"]
 
       bound =
@@ -151,16 +151,24 @@ defmodule EchoWeb.SkillControllerTest do
       assert bound["value"] == "echo-server"
     end
 
-    test "refuses to bind an input variable", %{conn: conn} do
+    test "never renders a secret's value, only whether it has one", %{conn: conn} do
       skill = skill_fixture()
-      variable_fixture(skill, %{name: "issue", kind: "input"})
+      variable_fixture(skill, %{name: "token", kind: "secret"})
 
-      conn =
-        put(conn, ~p"/api/v1/skills/#{skill.id}/variables/issue", %{
-          "variable" => %{"value" => "12"}
+      body =
+        conn
+        |> put(~p"/api/v1/skills/#{skill.id}/variables/token", %{
+          "variable" => %{"value" => "ghp_real"}
         })
+        |> data()
 
-      assert %{"value" => [_]} = errors(conn, 422)
+      assert body["value"] == nil
+      assert body["bound"] == true
+
+      # And not through the listing either.
+      listed = conn |> get(~p"/api/v1/skills/#{skill.id}/variables") |> data() |> hd()
+      assert listed["value"] == nil
+      assert listed["bound"] == true
     end
 
     test "a missing wrapper is a 400", %{conn: conn} do

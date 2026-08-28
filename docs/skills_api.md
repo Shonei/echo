@@ -76,36 +76,42 @@ declarations are rendered for the provider when a run starts.
 
 ## Variables
 
-A skill declares the values it needs; an operator says what fills them. Those
+A skill declares the values it needs; an operator gives them their values. Those
 are deliberately different privileges, and they are different endpoints.
+
+**Variables belong to the skill, not to a run.** One value, shared by every run
+of that skill. There is no per-run override — a run's own text reaches the
+transcript a different way, described below.
 
 ```http
 PUT /api/v1/skills/weekly-report/variables
 {"variables": [
   {"name": "repo_name", "kind": "config", "type": "string", "required": true,
    "description": "Which repository to report on"},
-  {"name": "since", "kind": "input", "type": "string"}
+  {"name": "github_token", "kind": "secret", "required": true,
+   "description": "A token with repo scope"}
 ]}
 ```
 
 This **replaces the whole set**, so it is idempotent when a caller retries.
-Bindings survive for any variable whose `name` is unchanged; one that disappears
-takes its binding with it, and one whose `kind` changes has its binding cleared.
-The response says what that cost:
+Values survive for any variable whose `name` is unchanged; one that disappears
+takes its value with it. The response says what that cost:
 
 ```json
 {"data": [...], "dropped_bindings": ["old_var"], "unbound": ["repo_name"]}
 ```
 
-| Kind | Set by | Resolved from |
+| Kind | Reaches the model? | Rendered by the API? |
 |---|---|---|
-| `config` | operator, once | `PUT /variables/:name` |
-| `input` | the caller, per run | the run's `input` object |
+| `config` | in tool results, like anything else | yes |
+| `secret` | never — replaced by its placeholder on the way back | never; only `bound: true` |
 
-`secret` and `oauth` are in the design and are **rejected** for now: there is no
-secret store yet (Phase 6), so such a variable could only ever be unbound.
+Redeclaring a `secret` as a `config` clears its value. That path is reachable by
+the builder agent in Phase 3, and without it an agent could expose a stored
+secret by rewriting its kind. Going the other way keeps the value, since that
+only adds protection.
 
-Binding a `config` variable:
+Giving a variable its value:
 
 ```http
 PUT /api/v1/skills/weekly-report/variables/repo_name
@@ -113,26 +119,38 @@ PUT /api/v1/skills/weekly-report/variables/repo_name
 ```
 
 The literal is checked against the declared `type`, so a `number` variable
-cannot be bound to `"abc"`. Binding an `input` variable is a `422` rather than a
-no-op — its value arrives per run.
+cannot be given `"abc"`.
+
+> **Secrets are stored in plain text for now.** Encrypting `skill_variables.value`
+> is a later change, and a contained one: only `Echo.Skills.Variables` reads that
+> column, and the API already never renders it.
 
 ### Using a variable
 
-The model writes the placeholder `$.name` into a tool argument, and Echo
-substitutes the real value **immediately before the tool runs**:
+The model writes the placeholder `$.name` into a **tool argument**, and Echo
+substitutes the real value immediately before the tool runs:
 
 ```json
 {"url": "https://api.github.com/repos/$.repo_name/releases"}
-{"headers": {"Authorization": "Bearer $.token"}}
+{"headers": {"Authorization": "Bearer $.github_token"}}
 ```
 
-Two properties matter, and Phase 6's secrets depend on both:
+Three properties matter:
 
 - **The placeholder is what gets persisted.** The arguments stored in
   `ai_messages` keep `$.repo_name`, so a value is never written to the database
   and never replayed into later model requests.
 - **A whole-string placeholder keeps its type.** `"$.retries"` on a `number`
   variable reaches the tool as `3`; `"n=$.retries"` reaches it as `"n=3"`.
+- **A secret is scrubbed out of the tool's result** before it is persisted or
+  shown to the model. A backstop, not a guarantee: a value the tool transforms
+  — encoded, hashed, truncated — will not match and will not be caught.
+
+**A variable does not resolve in the instructions.** A skill body reading
+`"Report on $.repo_name"` reaches the model with the placeholder intact, and the
+model is told which variables exist but never their values. That is what keeps a
+secret out of the system prompt, which is stored once and replayed into every
+subsequent request for the life of the conversation.
 
 Write `$$.name` for a literal `$.name` — jq and JSONPath use the same syntax.
 A conversation with no skill behind it (the plain agent chat) never substitutes
@@ -151,9 +169,30 @@ Returns **`202`** with the run, and never waits for the model:
 {"data": {"id": 42, "status": "queued", "session_id": null, ...}}
 ```
 
-The `input` object becomes the run's first message, three ways:
+### Where a run's input goes
 
-| Input | First message |
+The `input` object is this run's own ad-hoc text, and it is **not** a variable.
+It reaches the transcript two ways.
+
+**Into the instructions, by placeholder.** Any `$.name` in the skill body is
+filled from `input[name]` when the run starts:
+
+```
+skill body:  "Review the repo. $.instructions"
+input:       {"instructions": "focus on the auth changes"}
+prompt:      "Review the repo. focus on the auth changes"
+```
+
+Same sigil as a variable, deliberately — but two different sources resolved at
+two different moments. A run's input is substituted into the **prompt**; a
+skill's variables are substituted into **tool arguments**. The two namespaces
+are kept disjoint: an input key that collides with a declared variable name is
+ignored, so the run payload cannot write over a variable's placeholder.
+
+**As the first message, for whatever is left.** Keys the prompt did not consume
+become the opening user message:
+
+| Remaining input | First message |
 |---|---|
 | `{}` | a fixed "run this skill now" instruction |
 | `{"message": "..."}` | that text, verbatim |

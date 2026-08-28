@@ -30,7 +30,7 @@ defmodule Echo.Agent.ConversationRecord do
     field :provider, :string
 
     # Where this conversation's `$.name` placeholders resolve from, as an opaque
-    # token (`"skill_run:42"`). Handed to the configured
+    # token (`"skill:12"`). Handed to the configured
     # `Echo.Agents.VariableResolver`; nothing here parses it. Null means no
     # variables, which is every plain agent chat.
     field :variable_scope, :string
