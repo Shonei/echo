@@ -22,7 +22,8 @@ defmodule Echo.Skills do
   @doc """
   Returns the list of skills, newest first.
 
-  Accepts an optional `:enabled` filter.
+  Accepts an optional `:enabled` filter, a `:query` matched against slug, name
+  and description, and a `:limit`.
   """
   def list_skills(params \\ %{}) do
     Skill
@@ -35,6 +36,17 @@ defmodule Echo.Skills do
     Enum.reduce(filters, query, fn
       {:enabled, enabled}, query when is_boolean(enabled) ->
         from s in query, where: s.enabled == ^enabled
+
+      {:query, text}, query when is_binary(text) and text != "" ->
+        like = "%#{String.replace(text, ~r/[%_]/, "\\\\\\0")}%"
+
+        from s in query,
+          where:
+            ilike(s.slug, ^like) or ilike(s.name, ^like) or
+              ilike(coalesce(s.description, ""), ^like)
+
+      {:limit, limit}, query when is_integer(limit) and limit > 0 ->
+        from s in query, limit: ^limit
 
       _filter, query ->
         query

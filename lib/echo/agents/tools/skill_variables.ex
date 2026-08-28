@@ -91,16 +91,30 @@ defmodule Echo.Agents.Tools.ListSkills do
     %{
       "name" => "list_skills",
       "description" =>
-        "Lists the skills that already exist, so you can check a slug is free or read one back.",
-      "parameters" => %{"type" => "object", "properties" => %{}}
+        "Lists the skills that already exist, so you can check a slug is free, avoid " <>
+          "duplicating one, or read one back. Give a query to narrow it.",
+      "parameters" => %{
+        "type" => "object",
+        "properties" => %{
+          "query" => %{
+            "type" => "string",
+            "description" => "Optional text matched against slug, name and description."
+          }
+        }
+      }
     }
   end
 
   @impl true
-  def run(_args) do
+  def run(args) do
+    filters = %{limit: 50}
+
+    filters =
+      if is_binary(args["query"]), do: Map.put(filters, :query, args["query"]), else: filters
+
     %{
       "skills" =>
-        Enum.map(Echo.Skills.list_skills(), fn skill ->
+        Enum.map(Echo.Skills.list_skills(filters), fn skill ->
           %{
             "slug" => skill.slug,
             "name" => skill.name,

@@ -214,11 +214,18 @@ defmodule Echo.Agents.Presets do
   </variables>
 
   <tools>
-  You cannot grant a skill the tools it uses -- the operator does that. When a
-  skill needs one, say which and why, and leave it to them.
+  You cannot grant a skill the tools it uses -- the operator does that. Name the
+  ones a skill needs and why, using the names below exactly, and leave the rest
+  to them. Do not invent a tool: if the work needs something that is not listed,
+  say so plainly rather than writing a skill that cannot do it.
 
-  `list_skills` and `get_skill` read; the rest write. Check a slug is free
-  before creating.
+  A skill's provider is fixed when it is created and decides which of these it
+  can ever have, so choose it with the tool list in mind.
+
+  {{tool_catalogue}}
+
+  Your own tools are separate: `list_skills` and `get_skill` read, the rest
+  write. Check a slug is free before creating.
   </tools>
 
   <working>
@@ -249,7 +256,8 @@ defmodule Echo.Agents.Presets do
   """
   def skill_builder do
     %{
-      "system_prompt" => @skill_builder_prompt,
+      "system_prompt" =>
+        String.replace(@skill_builder_prompt, "{{tool_catalogue}}", tool_catalogue()),
       "temperature" => 0.3,
       "tools" =>
         @skill_builder_tools
@@ -257,4 +265,23 @@ defmodule Echo.Agents.Presets do
         |> List.wrap()
     }
   end
+
+  # Rendered from the registry rather than written out, so it cannot describe a
+  # tool that no longer exists or miss one that was added. The builder is told
+  # about these; it is deliberately not given them, or it would do the work in
+  # the chat instead of writing a skill that does it.
+  defp tool_catalogue do
+    Echo.Skills.SkillTools.grantable_catalogue()
+    |> Enum.group_by(& &1.providers)
+    |> Enum.sort_by(fn {providers, _tools} -> if providers == :all, do: 0, else: 1 end)
+    |> Enum.map_join("\n\n", fn {providers, tools} ->
+      Enum.join(
+        [heading(providers) | Enum.map(tools, &"  - #{&1.name}: #{&1.description}")],
+        "\n"
+      )
+    end)
+  end
+
+  defp heading(:all), do: "Available on any provider:"
+  defp heading([provider]), do: "Only on #{provider}:"
 end

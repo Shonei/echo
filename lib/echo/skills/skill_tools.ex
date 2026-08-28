@@ -26,6 +26,51 @@ defmodule Echo.Skills.SkillTools do
     }
   }
 
+  # Built-ins carry no declaration, so their descriptions live here. Echo's own
+  # tools describe themselves.
+  @builtin_descriptions %{
+    "google_search" => "Google Search, run by Gemini itself. Results come back as citations.",
+    "url_context" => "Lets Gemini fetch and read a URL the prompt mentions.",
+    "openrouter:web_search" =>
+      "Web search, run by OpenRouter itself. Results come back as annotations.",
+    "openrouter:web_fetch" => "Lets OpenRouter fetch and read a URL the prompt mentions."
+  }
+
+  @doc """
+  Every tool a skill can be granted, with what it does and which providers offer
+  it.
+
+  For describing the catalogue to an agent that advises on skills but cannot
+  grant anything itself.
+  """
+  def grantable_catalogue do
+    shared =
+      Enum.flat_map(Tools.skill_grantable_names(), fn name ->
+        case Tools.backend(name) do
+          nil ->
+            []
+
+          module ->
+            [%{name: name, description: module.declaration()["description"], providers: :all}]
+        end
+      end)
+
+    builtins =
+      for {provider_module, tools} <- @builtins,
+          name <- Map.keys(tools) do
+        %{
+          name: name,
+          description: Map.get(@builtin_descriptions, name, ""),
+          providers: [provider_name(provider_module)]
+        }
+      end
+
+    Enum.sort_by(shared ++ builtins, & &1.name)
+  end
+
+  defp provider_name(Gemini), do: "gemini"
+  defp provider_name(OpenRouter), do: "openrouter"
+
   @doc """
   Built-in tool names this provider offers.
   """

@@ -272,8 +272,17 @@ writes skills by talking to you, using the same message and content endpoints as
 any other conversation. In the browser, the **Build one with the agent** button
 on `/skills` does the same thing and drops you into the agent chat.
 
-It can create and rename skills, write their instructions, and declare their
-variables. It deliberately cannot:
+It can create and rename skills, write their instructions, declare their
+variables, and search what already exists so it does not duplicate one.
+
+**It is told which tools a skill could be granted, and given none of them.** The
+catalogue is rendered into its system prompt from the registry, so it cannot
+name a tool that does not exist or miss one that was added, and it can advise on
+a provider knowing that the choice is permanent and changes what is available.
+Granting it those tools would be worse than useless: it would do the work in the
+chat rather than write a skill that does it.
+
+It deliberately cannot:
 
 - **grant a skill its tools.** `tool_config` is not a field any of its tools
   accept. A grant is what a skill can reach out and do, so it is yours to make —

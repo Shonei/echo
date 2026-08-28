@@ -30,11 +30,12 @@ defmodule Echo.Agents.Tools do
     "get_skill" => GetSkill
   }
 
-  # Tools that write skills. A skill granted one of these is a careless approval
-  # away from rewriting its own grants, so they are never grantable to a skill --
-  # only to a conversation an operator started.
-  @skill_authoring ~w(create_skill update_skill update_skill_instructions
-                      define_skill_variables)
+  # Tools for managing skills. They belong to an agent an operator is talking to,
+  # never to a skill: one that could write skills is a careless approval away
+  # from rewriting its own grants, and one that could read them has no business
+  # doing so.
+  @skill_management ~w(create_skill update_skill update_skill_instructions
+                       define_skill_variables list_skills get_skill)
 
   @doc """
   Names of every server-executed tool.
@@ -44,7 +45,7 @@ defmodule Echo.Agents.Tools do
   @doc """
   Names a skill may be granted.
   """
-  def skill_grantable_names, do: Enum.sort(names() -- @skill_authoring)
+  def skill_grantable_names, do: Enum.sort(names() -- @skill_management)
 
   @doc """
   The module backing a name, or `nil`.
