@@ -13,7 +13,7 @@ defmodule Echo.Skills.Skill do
     field :name, :string
     field :description, :string
     field :instructions, :string
-    field :tools, {:array, :string}, default: []
+    field :tool_config, :map, default: %{}
     field :provider, :string
     field :model, :string
     field :temperature, :float
@@ -30,12 +30,14 @@ defmodule Echo.Skills.Skill do
     :slug,
     :name,
     :description,
-    :tools,
+    :tool_config,
     :model,
     :temperature,
     :max_output_tokens,
     :enabled
   ]
+
+  @gates ~w(never mutations always)
 
   @doc """
   Casts everything, including `provider` and `instructions`.
@@ -106,10 +108,10 @@ defmodule Echo.Skills.Skill do
       {:ok, provider_module} ->
         known = SkillTools.known_names(provider_module)
 
-        validate_change(changeset, :tools, fn :tools, tools ->
-          case Enum.uniq(tools) -- known do
+        validate_change(changeset, :tool_config, fn :tool_config, tool_config ->
+          case unknown_names(tool_config, known) ++ bad_settings(tool_config) do
             [] -> []
-            unknown -> [tools: "unknown for this provider: #{Enum.join(unknown, ", ")}"]
+            errors -> [tool_config: Enum.join(errors, "; ")]
           end
         end)
 
@@ -118,4 +120,33 @@ defmodule Echo.Skills.Skill do
         changeset
     end
   end
+
+  defp unknown_names(tool_config, known) when is_map(tool_config) do
+    case Map.keys(tool_config) -- known do
+      [] -> []
+      unknown -> ["unknown for this provider: #{Enum.join(Enum.sort(unknown), ", ")}"]
+    end
+  end
+
+  defp unknown_names(_tool_config, _known), do: ["must be an object keyed by tool name"]
+
+  # A gate decides whether a call runs unattended, so an unrecognised one is
+  # refused here rather than resolved at run time -- where the safe reading is
+  # "stop", and a typo would silently park every call the skill makes.
+  defp bad_settings(tool_config) when is_map(tool_config) do
+    tool_config
+    |> Enum.flat_map(fn
+      {_name, settings} when not is_map(settings) ->
+        ["each tool's settings must be an object"]
+
+      {name, %{"gate" => gate}} when gate not in @gates ->
+        ["#{name} has an unknown gate #{inspect(gate)}"]
+
+      _ok ->
+        []
+    end)
+    |> Enum.uniq()
+  end
+
+  defp bad_settings(_tool_config), do: []
 end

@@ -117,13 +117,15 @@ defmodule Echo.Agents.Variables do
       not exist. `message` is model-facing.
     * `{:error, :unavailable, reason}` — the scope could not be answered.
 
-  `resolver` is for tests: `nil` reads the configured module.
+  `resolver` is supplied by the caller rather than looked up here. Nothing in
+  this module reads application config, which is what lets every test of it run
+  with no setup at all.
   """
   @spec resolve(map(), String.t() | nil, module() | nil) ::
           {:ok, map(), [pair()]}
           | {:error, :unresolved, String.t()}
           | {:error, :unavailable, term()}
-  def resolve(args, scope, resolver \\ nil)
+  def resolve(args, scope, resolver)
 
   # No scope means no variables, so `$.foo` is just text — and it has to stay
   # text. `http_request` is already reachable from the plain agent chat, where a
@@ -135,14 +137,14 @@ defmodule Echo.Agents.Variables do
   def resolve(args, scope, resolver) when is_binary(scope) do
     case scan(args) do
       [] -> {:ok, args, []}
-      names -> do_resolve(args, scope, names, resolver || configured_resolver())
+      names -> do_resolve(args, scope, names, resolver)
     end
   end
 
-  # A conversation carrying a scope with nothing configured to answer it must
-  # not fall through and hand the tool `$.token` as a literal.
+  # A conversation carrying a scope with nothing to answer it must not fall
+  # through and hand the tool `$.token` as a literal.
   defp do_resolve(_args, _scope, _names, nil),
-    do: {:error, :unavailable, :no_resolver_configured}
+    do: {:error, :unavailable, :no_resolver}
 
   defp do_resolve(args, scope, names, resolver) do
     case fetch(resolver, scope, names) do
@@ -237,6 +239,4 @@ defmodule Echo.Agents.Variables do
 
   def scrub(list, used) when is_list(list), do: Enum.map(list, &scrub(&1, used))
   def scrub(other, _used), do: other
-
-  defp configured_resolver, do: Application.get_env(:echo, :variable_resolver)
 end

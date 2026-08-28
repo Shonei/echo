@@ -43,7 +43,7 @@ POST /api/v1/skills
   "name": "Weekly dependency report",
   "description": "Checks dependencies for new releases.",
   "instructions": "Fetch the latest release for each dependency below...",
-  "tools": ["http_request"],
+  "tool_config": {"http_request": {"gate": "mutations"}},
   "provider": "openrouter",
   "model": "openai/gpt-5.6-luna",
   "temperature": 0.2
@@ -64,15 +64,46 @@ To change it, create a new skill. `null` means Gemini.
 is a distinct operation from renaming the skill, which is what will make
 revisions cheap to add later.
 
-**`tools` holds names, not declarations**, and is validated on write: a name
-that is not a registered Echo tool, or a built-in the skill's provider does not
-offer, is rejected rather than stored and quietly ignored at run time. The
-declarations are rendered for the provider when a run starts.
+**`tool_config` says what the skill may invoke, and how.** It is keyed by tool
+name — never by declaration; those are rendered for the provider when a run
+starts. A name that is not a registered Echo tool, or a built-in this provider
+does not offer, is rejected on write rather than stored and quietly ignored at
+run time.
 
 | Provider | Available names |
 |---|---|
 | Gemini (default) | `http_request`, `google_search`, `url_context` |
 | OpenRouter | `http_request`, `openrouter:web_search`, `openrouter:web_fetch` |
+
+Each tool's settings are an object, and every key is optional:
+
+```json
+{"http_request": {"gate": "mutations", "config": {}}}
+{"http_request": {}}
+```
+
+**`gate`** decides when a call stops for a human instead of running:
+
+| Gate | Stops |
+|---|---|
+| `never` *(default)* | nothing; the tool runs unattended |
+| `mutations` | only calls the tool classifies as changing something. For `http_request` that is any method other than GET or HEAD |
+| `always` | every call |
+
+The tool classifies; the skill decides what to do about it. That split is what
+keeps this configuration rather than a policy engine, and it is why a scheduled
+skill that must write unattended can simply leave the gate at `never`.
+
+An unknown gate is rejected on write — resolving it at run time would mean
+guessing, and the safe guess is "stop", which would silently park every call the
+skill makes.
+
+**A gated call parks the whole turn**, siblings included: answering some of a
+turn's calls and not others is a shape OpenRouter rejects outright, and it would
+fire one call's side effect while waiting on a decision about its neighbour. The
+run moves to `awaiting_approval` and its task ends. Resuming it — `/pending`,
+approving, denying — arrives in Phase 2; until then a parked run is readable at
+`/ai-messages` but cannot be continued.
 
 ## Variables
 
@@ -217,7 +248,7 @@ schedule and still be run by hand.
 | `running` | a conversation exists; `session_id` is set |
 | `succeeded` | finished; `result` holds the model's text |
 | `failed` | finished; `error` says why |
-| `awaiting_approval` | reserved for Phase 2; unreachable today |
+| `awaiting_approval` | a call is gated and waiting on a human. Reachable, but not yet resumable — see Phase 2 |
 
 Once `session_id` is set, the conversation is readable at
 `/ai-messages/:session_id` — and it, not the run row, is the actual record of

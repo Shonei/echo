@@ -9,11 +9,17 @@ defmodule Echo.Agents.Conversation do
             thinking_enabled: false,
             thinking_budget: nil,
             tools: nil,
-            backend_tools: [],
+            # Resolved once at `init/1` into `Echo.Agents.Tool` structs, so the
+            # execution path never consults the compile-time registry.
+            toolset: [],
             model: nil,
             response_modalities: nil,
             provider: nil,
             variable_scope: nil,
+            # Who answers `$.name` for this conversation. Injected rather than
+            # looked up from the bottom of the call stack, so it shows up in
+            # `:sys.get_state/1` and `Echo.Agents.Variables` stays pure.
+            resolver: nil,
             messages: []
 end
 
@@ -57,12 +63,23 @@ defmodule Echo.Agents.ConversationManager do
     end
   end
 
+  # Every path that spins up a server goes through here -- `start_conversation/1`
+  # and the resume in `with_process/2` -- which is what lets the resolver be
+  # injected without a resumed conversation losing it. It can be injected at all
+  # only because it is one module for the whole system; anything that varies per
+  # conversation has to be durable instead, which is why the *scope* is a column
+  # and the resolver is not.
   defp start_child(id) do
     DynamicSupervisor.start_child(
       Echo.Agents.ConversationSupervisor,
-      {ConversationServer, %{id: id}}
+      {ConversationServer, %{id: id, resolver: resolver()}}
     )
   end
+
+  # `||` rather than a `get_env/3` default: a key explicitly set to nil exists,
+  # so the third argument would not apply and every conversation would come back
+  # with no resolver at all.
+  defp resolver, do: Application.get_env(:echo, :variable_resolver) || Echo.Skills.Variables
 
   @doc """
   Sends a message to a conversation.

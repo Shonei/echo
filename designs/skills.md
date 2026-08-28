@@ -78,15 +78,11 @@ skills
   name          text
   description   text                -- what it does, for listing and picking
   instructions  text                -- the markdown body: the actual SKILL.md
-  tools         {:array, :text}     -- approved tool names (see below)
+  tool_config   map                 -- what this skill may invoke, and how,
+                                    --  keyed by tool name (see below)
   provider      text                -- set at creation, never updatable.
                                     --  nil means Gemini, per Echo.Agents.Providers
   model         text                -- updatable, within that provider
-  gated_tools   {:array, :text}     -- Phase 2. Which calls stop for a human
-                                    --  instead of
-                                    --  running: "http_request" for every call,
-                                    --  "http_request:mutations" for the writes
-                                    --  only. See the approval gate
   temperature   float
   max_output_tokens integer
   enabled       boolean             -- false stops triggers from firing it;
@@ -95,8 +91,8 @@ skills
   timestamps
 ```
 
-`tools` is a list of **names**, not declarations, because every tool a skill can
-reach is defined somewhere else already:
+`tool_config` is keyed by tool **name**, not by declaration, because every tool
+a skill can reach is defined somewhere else already:
 
 | Kind | Named as | Declaration comes from |
 |---|---|---|
@@ -162,9 +158,10 @@ the variables use (see [Two writers, one row](#two-writers-one-row)):
 (`lib/echo/content/blog.ex:52`), which is why `PUT /blogs/:id` can safely ignore
 a `content` key rather than having to reject it.
 
-A third path writes `gated_tools` alone: "approve and remember" drops an entry
-mid-run (see [The approval gate](#the-approval-gate)). It narrows what stops for
-a human and touches nothing else — in particular it never widens `tools`.
+A third path writes `tool_config` alone: "approve and remember" sets one tool's
+gate back to `never` mid-run (see [The approval gate](#the-approval-gate)). It
+narrows what stops for a human and never adds a tool the skill did not already
+have.
 
 ```
 skill_runs
@@ -233,8 +230,8 @@ read, diffed, and pasted between systems:
 ---
 name: weekly-dependency-report
 description: Checks our dependencies for new releases and writes a summary.
-tools: [http_request]
-gated_tools: [http_request:mutations]
+tools:
+  http_request: {gate: mutations}
 model: openai/gpt-5.6-luna
 provider: openrouter
 ---
@@ -248,8 +245,8 @@ columns. The columns remain authoritative at run time, so a hand-edited
 `tools:` line in an exported file grants nothing until it has been imported and
 saved.
 
-Because `tools` stores names, the frontmatter can carry the same names the
-column does and a skill round-trips through a file without loss. That is a
+Because `tool_config` is keyed by name, the frontmatter can carry the same names
+the column does and a skill round-trips through a file without loss. That is a
 convenience of the format, **not** a relaxation of decision 2: the column is
 still the only thing consulted at run time, and importing a file is an operator
 granting those tools, exactly as if they had ticked them in a form. No builder
@@ -262,10 +259,10 @@ skill's provider does not offer, or a pinned block that does not exist is
 rejected rather than stored. `provider` is honoured on create and ignored on
 update, per [Provider is fixed at creation](#provider-is-fixed-at-creation).
 
-A **missing** `gated_tools:` line means nothing is gated, which on import is a
+A tool listed with **no `gate`** defaults to `never`, which on import is a
 widening rather than a no-op. That is the one place the projection can quietly
-grant more than the file appears to say, so an import that finds `tools:` and no
-`gated_tools:` should say so rather than assume.
+grant more than the file appears to say, so an import that finds a bare tool
+name should say what gate it is assuming rather than apply one silently.
 
 ## Running a skill
 
@@ -381,8 +378,8 @@ than conveniences:
 The tool classifies a call; the skill decides whether that class stops.
 
 A tool answers one fixed question about a call — whether it mutates anything —
-next to the code that actually knows. `gated_tools` then says what to do with
-the answer:
+next to the code that actually knows. A tool's `gate` then says what to do with the
+answer:
 
 | Entry | Parks |
 |---|---|
@@ -393,7 +390,7 @@ the answer:
 "Reads flow, writes stop" is the middle row, and it is the useful setting for
 most skills — gating `http_request` outright would mean a click for every page
 fetch. The last row matters just as much: a scheduled skill that must write has
-to be able to, or Phases 8 and 9 deliver nothing.
+to be able to, or the trigger phases deliver nothing.
 
 Splitting classification from policy is what keeps this configuration rather
 than a policy engine. The classification is fixed and closed; the row picks from
@@ -418,8 +415,7 @@ only once every pending call in it has an answer.
 
 ### Approve and remember
 
-**Approve and remember** is one column edit: drop the entry from the skill's
-`gated_tools`. Note what it is *not* — it never widens `tools`, because the
+**Approve and remember** is one edit: set that tool's `gate` back to `never`. Note what it is *not* — it never widens `tools`, because the
 model could not have called something outside that list in the first place. A
 skill gains a tool only when an operator or the builder agent adds one.
 
@@ -847,8 +843,8 @@ strings — reached through the run row, which joins `session_id` to `skill_id`.
 Not against `ai_conversations.tools`, which still holds provider-shaped
 declaration maps for the sake of client-declared tools; comparing those
 structurally would be a privilege boundary implemented as deep equality on
-nested maps. A child also inherits the parent's `gated_tools`, or gating would
-be escapable by delegation.
+nested maps. A child also inherits the parent's gates, or gating would be
+escapable by delegation.
 
 **Recursion needs its own ceiling.** `@max_tool_iterations` caps calls per turn
 (`lib/echo/agents/conversation_server.ex:11`), not nesting depth — a child
@@ -909,16 +905,17 @@ Substitution and scrubbing live in `Echo.Agents.Tools.run_all/2` rather than in
 the conversation's tool loop, so that Phase 2's approval path — which executes a
 tool outside that loop — inherits both instead of having to remember them.
 
-**Phase 2 — Gated tools.** A `gated_tools` column on `ai_conversations` and
-`skills`; a tool's classification of its own calls, so `:mutations` means
-something; pending-call derivation and a `/pending` read; the approval block on
-the existing `/content` route; and the UI that shows a pending call and its
-arguments. No new write endpoint — approve and deny both arrive the way every
-other message does.
+**Phase 2 — Resuming a gated call.** The gate itself is built: `tool_config`
+carries it on both `skills` and `ai_conversations`, a tool classifies its own
+calls, a gated call parks its whole turn, and a parked run moves to
+`awaiting_approval`. What is missing is the way back — `/pending`, the
+`toolApproval` block on the existing `/content` route, and the UI that shows a
+pending call and its arguments. No new write endpoint: approve and deny both
+arrive the way every other message does.
 
 Independent of skills: it applies to any conversation, including the existing
 agent chat, which can already call `http_request`. `remember` is the one part
-that is skill-only, since there is no `gated_tools` list to edit on a
+that is skill-only, since there is no skill row whose `tool_config` to edit on a
 conversation with no skill behind it.
 
 **Phase 3 — Builder agent.** `create_skill`, `update_skill`,

@@ -236,7 +236,7 @@ defmodule EchoWeb.AgentChatController do
   defp backend_tools(tool_params, provider_module) when is_map(tool_params) do
     Echo.Agents.Tools.names()
     |> Enum.filter(&checked?(tool_params[&1]))
-    |> Echo.Agents.Tools.tool_config(provider_module)
+    |> Echo.Agents.Tools.declarations(provider_module)
     |> List.wrap()
   end
 

@@ -41,12 +41,16 @@ defmodule EchoWeb.SkillControllerTest do
 
       conn =
         post(conn, ~p"/api/v1/skills", %{
-          "skill" => %{"slug" => slug, "name" => "Weekly", "tools" => ["http_request"]}
+          "skill" => %{
+            "slug" => slug,
+            "name" => "Weekly",
+            "tool_config" => %{"http_request" => %{"gate" => "mutations"}}
+          }
         })
 
       body = data(conn, 201)
       assert body["slug"] == slug
-      assert body["tools"] == ["http_request"]
+      assert body["tool_config"] == %{"http_request" => %{"gate" => "mutations"}}
       assert body["created_at"]
     end
 
@@ -58,10 +62,14 @@ defmodule EchoWeb.SkillControllerTest do
     test "an unknown tool is refused", %{conn: conn} do
       conn =
         post(conn, ~p"/api/v1/skills", %{
-          "skill" => %{"slug" => unique("skill"), "name" => "n", "tools" => ["nope"]}
+          "skill" => %{
+            "slug" => unique("skill"),
+            "name" => "n",
+            "tool_config" => %{"nope" => %{}}
+          }
         })
 
-      assert %{"tools" => [_]} = errors(conn, 422)
+      assert %{"tool_config" => [_]} = errors(conn, 422)
     end
   end
 

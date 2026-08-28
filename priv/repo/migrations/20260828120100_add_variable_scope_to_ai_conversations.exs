@@ -23,6 +23,15 @@ defmodule Echo.Repo.Migrations.AddVariableScopeToAiConversations do
   def change do
     alter table(:ai_conversations) do
       add :variable_scope, :text
+
+      # What Echo may execute for this conversation, and how, keyed by tool
+      # name -- separate from `tools`, which is the payload sent to the provider
+      # and includes client-side tools Echo never runs.
+      #
+      # Null means "derive it from the declarations", which is exactly what
+      # happened before this column existed. That is what keeps every existing
+      # conversation, and every caller that only sends `tools`, unchanged.
+      add :tool_config, :map
     end
   end
 end

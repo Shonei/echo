@@ -101,11 +101,14 @@ defmodule Echo.Agents.ConversationServer do
               response_modalities: record.response_modalities,
               provider: provider,
               variable_scope: record.variable_scope,
+              resolver: Map.get(opts, :resolver),
               messages: id |> Echo.Agent.list_messages_by_session() |> replay_into_turns()
             }
 
-            # Only tools this conversation actually declared may be run server-side.
-            {:ok, %{convo | backend_tools: Echo.Agents.Tools.enabled(convo.tools)}}
+            # Resolved once, here, from durable state. Everything downstream
+            # works from these structs rather than from the registry, which is
+            # what gives a tool somewhere to carry per-conversation settings.
+            {:ok, %{convo | toolset: Echo.Agents.Tools.build(record.tool_config, convo.tools)}}
 
           {:error, reason} ->
             {:stop, reason}
@@ -214,18 +217,30 @@ defmodule Echo.Agents.ConversationServer do
   end
 
   defp continue_turn(messages, ai_parts, api_opts, convo, acc_parts, metadata, depth) do
-    case Echo.Agents.Tools.executable_calls(ai_parts, convo.backend_tools) do
-      [] ->
+    # A gated call is not executed and not answered: the turn ends, every call
+    # comes back to the caller in `acc_parts`, and the process is freed. That is
+    # the path a client-side tool already takes, so nothing new happens here --
+    # what makes it an approval rather than a dead end is the resume, which
+    # `designs/skills.md` Phase 2 adds.
+    case Echo.Agents.Tools.partition_calls(ai_parts, convo.toolset) do
+      {[], parked} when parked != [] ->
+        Logger.info(
+          "Conversation #{convo.id} parked #{length(parked)} call(s) awaiting a decision"
+        )
+
         {:ok, messages, acc_parts, metadata}
 
-      calls when depth >= @max_tool_iterations ->
+      {[], []} ->
+        {:ok, messages, acc_parts, metadata}
+
+      {calls, _parked} when depth >= @max_tool_iterations ->
         Logger.warning(
           "Conversation #{convo.id} hit the tool iteration limit with #{length(calls)} pending call(s)"
         )
 
         {:ok, messages, acc_parts, metadata}
 
-      calls ->
+      {calls, _parked} ->
         # Checked before running the tools, not after, so a tool round is never
         # started with no time left to use its result. Out of budget is the same
         # outcome as the iteration limit above, and for the same reason: every
@@ -243,16 +258,16 @@ defmodule Echo.Agents.ConversationServer do
     end
   end
 
-  # `Tools.run_all/2` is where a `$.name` the model wrote becomes the value the
+  # `Tools.run_all/4` is where a `$.name` the model wrote becomes the value the
   # tool runs with, and where it becomes a placeholder again on the way back.
   # Both halves happen strictly between the two `store_parts/5` calls that
   # bracket this: `run_turn/5` has already persisted the `functionCall` with the
   # placeholder intact, and the responses below are scrubbed before they are
   # persisted here. `messages` is untouched by either -- the resolved copy never
-  # leaves `run_all/2`'s stack -- so the in-memory history and Postgres stay
+  # leaves `run_all/4`'s stack -- so the in-memory history and Postgres stay
   # identical, which is what `replay_into_turns/1` depends on.
   defp run_tools(calls, messages, api_opts, convo, acc_parts, depth) do
-    case Echo.Agents.Tools.run_all(calls, convo.variable_scope) do
+    case Echo.Agents.Tools.run_all(calls, convo.toolset, convo.variable_scope, convo.resolver) do
       {:ok, response_parts} ->
         case store_parts(convo.id, "user", response_parts, convo.model) do
           :ok ->

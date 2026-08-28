@@ -87,7 +87,7 @@ defmodule Echo.Skills.RunnerTest do
 
     test "tools are rendered for the provider, not copied from the column" do
       stub_reply("ok")
-      skill = skill_fixture(tools: ["http_request"])
+      skill = skill_fixture(tool_config: %{"http_request" => %{}})
       run = run_fixture(skill)
 
       Runner.execute(run.id)
@@ -97,12 +97,12 @@ defmodule Echo.Skills.RunnerTest do
 
       assert Enum.any?(declarations, &(&1["name"] == "http_request"))
       # The column still holds names, never declarations.
-      assert Skills.get_skill!(skill.id).tools == ["http_request"]
+      assert Map.keys(Skills.get_skill!(skill.id).tool_config) == ["http_request"]
     end
 
     test "no tools sends no tools key at all, because [] breaks Gemini" do
       stub_reply("ok")
-      run = run_fixture(skill_fixture(tools: []))
+      run = run_fixture(skill_fixture(tool_config: %{}))
 
       Runner.execute(run.id)
 
@@ -223,7 +223,7 @@ defmodule Echo.Skills.RunnerTest do
     end
 
     test "a secret reaches the tool and is scrubbed back out of its result" do
-      skill = skill_fixture(tools: ["http_request"])
+      skill = skill_fixture(tool_config: %{"http_request" => %{}})
       variable_fixture(skill, %{name: "internal_host", kind: "secret", value: "localhost"})
       run = run_fixture(skill)
 
@@ -259,7 +259,7 @@ defmodule Echo.Skills.RunnerTest do
     end
 
     test "a config value is not scrubbed, because that would corrupt results" do
-      skill = skill_fixture(tools: ["http_request"])
+      skill = skill_fixture(tool_config: %{"http_request" => %{}})
       variable_fixture(skill, %{name: "internal_host", value: "localhost"})
       run = run_fixture(skill)
 
@@ -288,6 +288,63 @@ defmodule Echo.Skills.RunnerTest do
         |> Enum.find(&(&1.type == "functionResponse"))
 
       assert response_row.payload["response"]["error"] =~ "localhost"
+    end
+
+    test "a gated call parks the run rather than finishing it" do
+      skill =
+        skill_fixture(tool_config: %{"http_request" => %{"gate" => "mutations"}})
+
+      run = run_fixture(skill)
+
+      call = %{
+        "functionCall" => %{
+          "name" => "http_request",
+          "args" => %{"url" => "https://example.com", "method" => "POST"}
+        }
+      }
+
+      FakeHTTPClient.stub(%{
+        "candidates" => [%{"content" => %{"parts" => [call]}, "finishReason" => "STOP"}]
+      })
+
+      Runner.execute(run.id)
+
+      run = Skills.get_run!(run.id)
+      assert run.status == "awaiting_approval"
+
+      # The call is durable and unanswered, which is what a resume reads.
+      assert [pending] = Echo.Agent.unanswered_calls(run.session_id)
+      assert pending.payload["name"] == "http_request"
+
+      # And nothing was sent: only the one model call, no second round.
+      assert length(FakeHTTPClient.requests()) == 1
+    end
+
+    test "a read still runs when only mutations are gated" do
+      skill =
+        skill_fixture(tool_config: %{"http_request" => %{"gate" => "mutations"}})
+
+      run = run_fixture(skill)
+
+      call = %{
+        "functionCall" => %{
+          "name" => "http_request",
+          "args" => %{"url" => "http://127.0.0.1/"}
+        }
+      }
+
+      FakeHTTPClient.stub_sequence([
+        %{"candidates" => [%{"content" => %{"parts" => [call]}, "finishReason" => "STOP"}]},
+        %{
+          "candidates" => [
+            %{"content" => %{"parts" => [%{"text" => "done"}]}, "finishReason" => "STOP"}
+          ]
+        }
+      ])
+
+      Runner.execute(run.id)
+
+      assert Skills.get_run!(run.id).status == "succeeded"
     end
 
     test "a model error fails the run and says why" do

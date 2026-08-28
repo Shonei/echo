@@ -22,7 +22,7 @@ defmodule EchoWeb.SkillJSON do
       name: skill.name,
       description: skill.description,
       instructions: skill.instructions,
-      tools: skill.tools,
+      tool_config: skill.tool_config,
       # Reported as stored rather than resolved, so the API says what the row
       # says: null means the default, Gemini.
       provider: skill.provider,

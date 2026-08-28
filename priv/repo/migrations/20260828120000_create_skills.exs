@@ -21,11 +21,18 @@ defmodule Echo.Repo.Migrations.CreateSkills do
       add :description, :text
       add :instructions, :text
 
-      # Tool NAMES, never declarations. Rendered for the skill's provider at
-      # conversation-start time by Echo.Skills.SkillTools, because a skill has
-      # no client and therefore never needs to store a declaration it has no
-      # code for.
-      add :tools, {:array, :text}, null: false, default: []
+      # What this skill may invoke, and how, keyed by tool name:
+      #
+      #   {"http_request": {"gate": "mutations", "config": {...}}}
+      #
+      # Names, never declarations -- a skill has no client, so it never needs to
+      # store a declaration it has no code for. Declarations are rendered for
+      # the skill's provider at conversation-start time.
+      #
+      # One map rather than a names array plus a gated-tools array: two columns
+      # that have to agree is a bug waiting to happen, and a per-tool setting
+      # has nowhere obvious to go.
+      add :tool_config, :map, null: false, default: %{}
 
       # Fixed at creation, never updatable: capability parity between providers
       # is not portable, so moving a skill would silently drop or substitute

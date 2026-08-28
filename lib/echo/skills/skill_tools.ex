@@ -53,14 +53,24 @@ defmodule Echo.Skills.SkillTools do
   def known_names(provider_module), do: Tools.names() ++ builtin_names(provider_module)
 
   @doc """
-  Renders names into the `tools` conversation opt, or `nil` when there are none.
+  Renders a skill's `tool_config` into the `tools` conversation opt, or `nil`
+  when there are none.
 
   `nil` rather than `[]` on purpose: an empty tools list is not the same as no
   tools -- sending `"tools": []` to a model that cannot use tools at all makes
   Gemini fail.
+
+  Only the names matter here. What each tool is *allowed* to do travels
+  separately, on the conversation's own `tool_config`, because it is Echo's
+  business and not the model's.
   """
-  def render(names, provider_module \\ Gemini)
+  def render(tool_config, provider_module \\ Gemini)
   def render(nil, _provider_module), do: nil
+  def render(tool_config, _provider_module) when tool_config == %{}, do: nil
+
+  def render(tool_config, provider_module) when is_map(tool_config),
+    do: render(Map.keys(tool_config), provider_module)
+
   def render([], _provider_module), do: nil
 
   def render(names, provider_module) when is_list(names) do
@@ -76,7 +86,7 @@ defmodule Echo.Skills.SkillTools do
     echo_tools =
       names
       |> Enum.filter(&(&1 in Tools.names()))
-      |> Tools.tool_config(provider_module)
+      |> Tools.declarations(provider_module)
       |> List.wrap()
 
     case builtins ++ echo_tools do

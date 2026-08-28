@@ -35,6 +35,10 @@ defmodule Echo.Agent.ConversationRecord do
     # variables, which is every plain agent chat.
     field :variable_scope, :string
 
+    # What Echo may execute here, and how. Null means "derive it from the
+    # declarations", the behaviour that predates this column.
+    field :tool_config, :map
+
     timestamps(type: :utc_datetime)
   end
 
@@ -52,7 +56,8 @@ defmodule Echo.Agent.ConversationRecord do
       :model,
       :response_modalities,
       :provider,
-      :variable_scope
+      :variable_scope,
+      :tool_config
     ])
     |> validate_required([:session_id])
   end

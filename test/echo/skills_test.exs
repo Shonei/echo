@@ -5,19 +5,19 @@ defmodule Echo.SkillsTest do
   alias Echo.Skills.Skill
 
   describe "create_skill/1" do
-    test "stores names, tools and provider" do
+    test "stores names, tool config and provider" do
       slug = unique("skill")
 
       assert {:ok, %Skill{} = skill} =
                Skills.create_skill(%{
                  "slug" => slug,
                  "name" => "Weekly report",
-                 "tools" => ["http_request"],
+                 "tool_config" => %{"http_request" => %{}},
                  "provider" => "openrouter"
                })
 
       assert skill.slug == slug
-      assert skill.tools == ["http_request"]
+      assert skill.tool_config == %{"http_request" => %{}}
       assert skill.provider == "openrouter"
       assert skill.enabled
     end
@@ -47,10 +47,10 @@ defmodule Echo.SkillsTest do
                Skills.create_skill(%{
                  "slug" => unique("skill"),
                  "name" => "n",
-                 "tools" => ["http_request", "definitely_not_a_tool"]
+                 "tool_config" => %{"http_request" => %{}, "definitely_not_a_tool" => %{}}
                })
 
-      assert %{tools: [message]} = errors_on(changeset)
+      assert %{tool_config: [message]} = errors_on(changeset)
       assert message =~ "definitely_not_a_tool"
     end
 
@@ -60,10 +60,10 @@ defmodule Echo.SkillsTest do
                  "slug" => unique("skill"),
                  "name" => "n",
                  "provider" => "openrouter",
-                 "tools" => ["google_search"]
+                 "tool_config" => %{"google_search" => %{}}
                })
 
-      assert %{tools: [message]} = errors_on(changeset)
+      assert %{tool_config: [message]} = errors_on(changeset)
       assert message =~ "google_search"
     end
 
@@ -73,10 +73,35 @@ defmodule Echo.SkillsTest do
                  "slug" => unique("skill"),
                  "name" => "n",
                  "provider" => "openrouter",
-                 "tools" => ["openrouter:web_search", "http_request"]
+                 "tool_config" => %{"openrouter:web_search" => %{}, "http_request" => %{}}
                })
 
-      assert "openrouter:web_search" in skill.tools
+      assert Map.has_key?(skill.tool_config, "openrouter:web_search")
+    end
+
+    test "rejects an unknown gate rather than resolving it at run time" do
+      assert {:error, changeset} =
+               Skills.create_skill(%{
+                 "slug" => unique("skill"),
+                 "name" => "n",
+                 "tool_config" => %{"http_request" => %{"gate" => "sometimes"}}
+               })
+
+      assert %{tool_config: [message]} = errors_on(changeset)
+      assert message =~ "sometimes"
+    end
+
+    test "accepts every gate the toolset understands" do
+      for gate <- ~w(never mutations always) do
+        assert {:ok, skill} =
+                 Skills.create_skill(%{
+                   "slug" => unique("skill"),
+                   "name" => "n",
+                   "tool_config" => %{"http_request" => %{"gate" => gate}}
+                 })
+
+        assert skill.tool_config["http_request"]["gate"] == gate
+      end
     end
 
     test "rejects an unknown provider" do
@@ -117,8 +142,10 @@ defmodule Echo.SkillsTest do
     test "validates tools against the provider already on the row" do
       skill = skill_fixture(slug: unique("skill"), provider: "openrouter")
 
-      assert {:error, changeset} = Skills.update_skill(skill, %{"tools" => ["google_search"]})
-      assert %{tools: _} = errors_on(changeset)
+      assert {:error, changeset} =
+               Skills.update_skill(skill, %{"tool_config" => %{"google_search" => %{}}})
+
+      assert %{tool_config: _} = errors_on(changeset)
     end
   end
 

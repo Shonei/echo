@@ -182,7 +182,7 @@ defmodule EchoWeb.AgentChatControllerTest do
       assert %{"type" => "function", "function" => %{"name" => "http_request"}} =
                Enum.find(state.tools, &(&1["type"] == "function"))
 
-      assert state.backend_tools == ["http_request"]
+      assert Enum.map(state.toolset, & &1.name) == ["http_request"]
     end
 
     test "omits the engine when left on auto, rather than pinning OpenRouter's default", %{

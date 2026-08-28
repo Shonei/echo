@@ -73,7 +73,7 @@ defmodule Echo.Agents.ConversationGeminiTest do
   # turn ran on, persisted everything, and the client got a 500 for work that
   # had completed. One budget for the turn is what stops that.
   test "every model call in a turn draws down one budget instead of resetting it" do
-    tools = [Echo.Agents.Tools.tool_config(["http_request"], Gemini)]
+    tools = [Echo.Agents.Tools.declarations(["http_request"], Gemini)]
 
     # Refused by `HttpRequest.validate_url/1` as an internal address, so the tool
     # returns an error map without touching the network, and the loop continues.

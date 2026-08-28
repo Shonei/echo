@@ -3,13 +3,16 @@ defmodule Echo.Agents.VariableResolver do
   The one thing `Echo.Agents` needs from whatever owns a conversation's
   variables, and the only thing it is allowed to know about it.
 
-  `Echo.Skills` calls `Echo.Agents.ConversationManager` to start a run, so
-  `Echo.Agents` cannot name `Echo.Skills` back without a compile-time cycle.
-  The implementing module is read from application config
-  (`config :echo, :variable_resolver, Echo.Skills.Variables`) instead. Config is
-  data, and a module name sitting in it is not a dependency — that lookup, not
-  the behaviour below, is what breaks the cycle. The behaviour is here for
-  `@impl` checking and for somewhere to write this down.
+  `Echo.Agents` is generic conversation machinery; `Echo.Skills` is one consumer
+  of it. Rather than have the generic layer name a specific consumer, the
+  dependency is inverted: the contract lives here, the implementation lives in
+  `Echo.Skills.Variables`, and `Echo.Agents.ConversationManager` hands the module
+  to each conversation at start.
+
+  Injecting it works only because there is one resolver for the whole system.
+  Anything that varies per conversation has to be durable instead, since
+  `ConversationServer.init/1` receives nothing but an id — which is why the
+  *scope* is a column and the resolver is not.
 
   The callback is deliberately the smallest thing that can cross: names in,
   values out. Finding placeholders, substituting them, and scrubbing them back

@@ -95,7 +95,7 @@ defmodule Echo.Agents.ConversationOpenRouterTest do
         })
 
       [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
-      assert :sys.get_state(pid).backend_tools == []
+      assert :sys.get_state(pid).toolset == []
     end
   end
 

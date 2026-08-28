@@ -95,7 +95,11 @@ defmodule Echo.Skills.Runner do
       "model" => skill.model,
       "temperature" => skill.temperature,
       "max_output_tokens" => skill.max_output_tokens,
-      "tools" => SkillTools.render(skill.tools, provider_module),
+      "tools" => SkillTools.render(skill.tool_config, provider_module),
+      # What Echo may execute, and how -- carried onto the conversation so a
+      # resumed one rebuilds the same toolset from its own row rather than
+      # having to find the skill again.
+      "tool_config" => skill.tool_config,
       # Where this conversation's `$.name` tool arguments resolve from. Opaque
       # to `Echo.Agents`, which stores it and hands it back to the configured
       # resolver. It names the skill, because variables belong to the skill.
@@ -110,10 +114,28 @@ defmodule Echo.Skills.Runner do
   defp deliver(%Run{} = run, remaining) do
     case ConversationManager.message(run.session_id, first_message(remaining)) do
       {:ok, parts, _metadata} ->
-        Skills.finish_run(run, "succeeded", result: final_text(parts))
+        finish(run, final_text(parts))
 
       {:error, reason} ->
         fail(run, inspect(reason))
+    end
+  end
+
+  # A turn that ended on a gated call is not finished and is not a failure. The
+  # run parks, its task ends, and nothing holds a process open across human
+  # time -- the conversation is durable and resumable like any other, so the
+  # work is not stranded, only waiting.
+  #
+  # A skill run has no client, so an unanswered call can only be one that
+  # stopped for a decision.
+  defp finish(%Run{} = run, result) do
+    case Echo.Agent.unanswered_calls(run.session_id) do
+      [] ->
+        Skills.finish_run(run, "succeeded", result: result)
+
+      pending ->
+        Logger.info("Skill run #{run.id} is awaiting a decision on #{length(pending)} call(s)")
+        Skills.finish_run(run, "awaiting_approval", result: result)
     end
   end
 
