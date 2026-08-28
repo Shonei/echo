@@ -1,6 +1,7 @@
 # Skills: repeatable agent work, authored by an agent
 
-> **Status: proposed.** Nothing here is built. Supersedes the earlier
+> **Status: Phase 1 is built** (skills, runs, variables, the run endpoint and
+> late `$.name` substitution); Phases 2–9 are proposed. Supersedes the earlier
 > `designs/agents_builder.md`, which proposed DB-defined agents with
 > HTTP-endpoint tools, was never implemented, and has since been deleted — the
 > pieces of it worth keeping are folded in below.
@@ -26,11 +27,13 @@ the author approves anything dangerous, and later fired by a trigger.
 
 1. **Approval is per-tool configuration, not a runtime policy engine.** A tool
    can be marked as one that stops rather than runs; the call comes back for a
-   human decision, exactly as a client-side tool does today. There is no
-   approval mode, no policy evaluation, and nothing to catch — the model is
-   only ever offered the tools the skill declared. A finished skill may keep
-   gated tools: a parked run is an ordinary conversation and is resumable in
-   the UI. See [The approval gate](#the-approval-gate).
+   human decision, exactly as a client-side tool does today, and the decision
+   returns through the conversation's own content route rather than an endpoint
+   of its own. There is no approval mode, no policy evaluation, and nothing to
+   catch — the model is only ever offered the tools the skill declared. A
+   finished skill may keep gated tools: a parked run is an ordinary
+   conversation and is resumable in the UI. See
+   [The approval gate](#the-approval-gate).
 2. **The tool list is a column, and a human is always in the loop when it
    changes.** The markdown body carries instructions and may well name
    parameters for the agent to use — best-effort, and fine. What a skill may
@@ -70,17 +73,21 @@ gain their foreign key when that table exists, so Phase 1 migrates on its own.
 
 ```
 skills
-  id            uuid, primary key
-  slug          string, unique      -- ^[a-z0-9-]+$, how a trigger names it
-  name          string
+  id            bigserial, primary key
+  slug          text, unique        -- ^[a-z0-9]+(?:-[a-z0-9]+)*$, how a
+                                    --  trigger names it
+  name          text
   description   text                -- what it does, for listing and picking
   instructions  text                -- the markdown body: the actual SKILL.md
-  tools         {:array, :string}   -- approved tool names (see below)
-  provider      string              -- set at creation, never updatable.
+  tools         {:array, :text}     -- approved tool names (see below)
+  provider      text                -- set at creation, never updatable.
                                     --  nil means Gemini, per Echo.Agents.Providers
-  model         string              -- updatable, within that provider
-  gated_tools   {:array, :string}   -- subset of tools that stop for a human
-                                    --  instead of running. See the approval gate
+  model         text                -- updatable, within that provider
+  gated_tools   {:array, :text}     -- Phase 2. Which calls stop for a human
+                                    --  instead of
+                                    --  running: "http_request" for every call,
+                                    --  "http_request:mutations" for the writes
+                                    --  only. See the approval gate
   temperature   float
   max_output_tokens integer
   enabled       boolean             -- false stops triggers from firing it;
@@ -95,7 +102,7 @@ reach is defined somewhere else already:
 | Kind | Named as | Declaration comes from |
 |---|---|---|
 | Echo tools | `http_request` | `Echo.Agents.Tools` → `tool_config/2` |
-| Provider built-ins | `google_search`, `openrouter:web_search` | the provider's own shape |
+| Provider built-ins | `google_search`, `openrouter:web_search` | `Echo.Skills.SkillTools`, per provider |
 | Pinned code blocks | the block's `name` | `skill_code_blocks.params_schema`, Phase 4 |
 
 A skill has no client, which is what makes this sufficient.
@@ -156,19 +163,23 @@ the variables use (see [Two writers, one row](#two-writers-one-row)):
 (`lib/echo/content/blog.ex:52`), which is why `PUT /blogs/:id` can safely ignore
 a `content` key rather than having to reject it.
 
-A third path writes `tools` alone: "approve and remember" appends a tool to a
-skill mid-run (see [The approval gate](#the-approval-gate)). It appends to that
-one column and touches nothing else.
+A third path writes `gated_tools` alone: "approve and remember" drops an entry
+mid-run (see [The approval gate](#the-approval-gate)). It narrows what stops for
+a human and touches nothing else — in particular it never widens `tools`.
 
 ```
 skill_runs
-  id            uuid, primary key
+  id            bigserial, primary key
   skill_id      references skills
-  trigger_id    uuid, nullable      -- null for a manual run. Plain column in
+  trigger_id    bigint, nullable    -- null for a manual run. Plain column in
                                     --  Phase 1; the FK to skill_triggers is
                                     --  added in Phase 8 when that table exists
-  session_id    string              -- the ai_conversations / ai_messages id
-  status        string              -- queued | running | awaiting_approval
+  session_id    text, nullable      -- the ai_conversations / ai_messages id.
+                                    --  Null until the run's task has started a
+                                    --  conversation: start_conversation/1
+                                    --  generates the id, so the row cannot know
+                                    --  it at insert
+  status        text                -- queued | running | awaiting_approval
                                     --  | succeeded | failed
   input         map                 -- trigger payload, or the user's instruction
   result        text                -- the final assistant text
@@ -183,28 +194,30 @@ join to it.
 
 ```
 skill_variables            -- declaration and binding, written by two paths
-  id
+  id            bigserial
   skill_id      references skills
-  name          string   -- ^[a-z_][a-z0-9_]*$, referenced as $.name
-  kind          string   -- secret | oauth | config | input
-  type          string   -- string | number | boolean
+  name          text     -- ^[a-z_][a-z0-9_]*$, referenced as $.name
+  kind          text     -- config | input today; secret and oauth are rejected
+                         --  until Phases 6 and 7, since such a row could only
+                         --  ever be unbound
+  type          text     -- string | number | boolean
   description   text     -- shown to the model and to whoever fills it in
   required      boolean
   position      integer  -- stable ordering for forms
-  oauth_provider string  -- kind=oauth: which provider it wants, e.g. "github".
+  oauth_provider text    -- kind=oauth: which provider it wants, e.g. "github".
                          --  Named apart from skills.provider, which is a model
                          --  backend -- two unrelated meanings of one word
 
   -- Both are plain columns in Phase 1; the FKs and the tables they point at
   -- arrive with the phase that introduces them.
-  secret_id     uuid     -- kind=secret. FK to secrets in Phase 6
-  connection_id uuid     -- kind=oauth. FK to oauth_connections in Phase 7
+  secret_id     bigint   -- kind=secret. FK to secrets in Phase 6
+  connection_id bigint   -- kind=oauth. FK to oauth_connections in Phase 7
   value         text     -- kind=config: the literal
   timestamps
 
 secrets                    -- global, not per-skill. Phase 6.
-  id
-  name            string, unique   -- github_api_key
+  id              bigserial
+  name            text, unique     -- github_api_key
   description     text
   encrypted_value binary
   last_used_at    utc_datetime
@@ -232,6 +245,7 @@ read, diffed, and pasted between systems:
 name: weekly-dependency-report
 description: Checks our dependencies for new releases and writes a summary.
 tools: [http_request]
+gated_tools: [http_request:mutations]
 model: openai/gpt-5.6-luna
 provider: openrouter
 ---
@@ -258,6 +272,11 @@ Import validates: a name that is not a registered Echo tool, a built-in the
 skill's provider does not offer, or a pinned block that does not exist is
 rejected rather than stored. `provider` is honoured on create and ignored on
 update, per [Provider is fixed at creation](#provider-is-fixed-at-creation).
+
+A **missing** `gated_tools:` line means nothing is gated, which on import is a
+widening rather than a no-op. That is the one place the projection can quietly
+grant more than the file appears to say, so an import that finds `tools:` and no
+`gated_tools:` should say so rather than assume.
 
 ## Running a skill
 
@@ -298,78 +317,122 @@ conversation itself is durable and readable, so nothing is lost but the status.
 
 ## The approval gate
 
-**A tool that needs a decision is a tool that stops instead of running.** That
-is the whole mechanism, and Echo already has the path for it.
+**A tool call that needs a decision stops instead of running.** The operator
+answers it, and the conversation carries on. That is the whole mechanism.
 
-`Echo.Agents.Tools.executable_calls/2` returns only the calls whose name is in
-the conversation's `backend_tools` (`lib/echo/agents/tools.ex:73`); every other
-`functionCall` falls through untouched and comes back to the caller in `parts`.
-That is exactly how the blog editor's `edit_text` works — Echo hands the call
-back, and the caller answers with a `functionResponse` through
-`PUT /conversation/:id/content`. A gated tool is a server tool borrowing the
-client tool's path.
+Echo already has most of the path. A call the conversation cannot execute itself
+falls through untouched and comes back to the caller — that is how the blog
+editor's client-side `edit_text` works today. A gated call takes the same road:
+it is not executed, the turn ends, and the process is freed. Nothing holds a
+process open across human time.
 
-So there is no approval *mode*, no policy engine, and no second gate composed
-with the declared set. There is one list.
+The model is only ever offered the tools the skill declared, so nothing has to
+be *caught*. There is no approval mode and no policy engine.
 
-**Gated tools.** A conversation carries which of its declared tools may not run
-unattended, and `backend_tools` becomes declared-minus-gated:
+### One transport
 
-```elixir
-# today (lib/echo/agents/conversation_server.ex:107)
-backend_tools: Echo.Agents.Tools.enabled(convo.tools)
-
-# with gating
-backend_tools: Echo.Agents.Tools.enabled(convo.tools) -- record.gated_tools
-```
-
-The model is only ever offered the tools the skill declared. It cannot ask for
-something it was not given, so nothing has to be caught — a gated call simply
-is not executed, the turn ends, and the process is free. `skills` carries
-`gated_tools` alongside `tools`; `ai_conversations` gains the same column so a
-resumed conversation rebuilds the gate from Postgres like everything else.
-
-**Pausing needs no new durable state.** The model's `functionCall` is persisted
-before the loop continues (`store_parts/5` at
-`lib/echo/agents/conversation_server.ex:279`, called from `run_turn/5` before
-`continue_turn/7`), so a pending call is already in `ai_messages`: it is a
-`functionCall` in the last model turn with no answering `functionResponse`.
-That is derivable from history and therefore still correct after a restart,
-because `init/1` replays it (`:79`, `replay_into_turns/1` at `:304`).
-
-On Gemini a `functionResponse` carries only `name`, so two parallel calls to the
-same tool cannot be paired by name. Pair by position: parts are ordered, tool
-responses are generated in call order, and rows come back ordered by `id`.
-OpenRouter carries an `id` and pairs by that.
-
-### Two shapes of resume
-
-Approval looks like one action and is two, because the thing being approved is a
-**server-side** tool whose result only Echo can produce.
-
-| Gated tool | What a decision means | How it resumes |
-|---|---|---|
-| Server tool (`http_request`, `run_elixir`) | "yes, execute it" | Echo runs the pending call and continues |
-| Deny, or a tool the operator answers | "here is the result" | an ordinary `functionResponse` |
-
-Only the first needs an endpoint of its own, and it is thin — it re-reads the
-pending call from history, runs it through `Echo.Agents.Tools.run/1`
-(`lib/echo/agents/tools.ex:92`), and continues the loop exactly as
-`continue_turn/7` would have:
+An approval arrives the same way every other message does, on the conversation's
+existing content route:
 
 ```
-GET  /api/v1/ai/conversation/:id/pending   -> calls awaiting a decision
-POST /api/v1/ai/conversation/:id/approve   -> {call_id}
+PUT /api/v1/ai/conversation/:id/content
+
+{"content_blocks": [{"toolApproval": {"id": <call>, "decision": "approve"}}]}
+{"content_blocks": [{"toolApproval": {"id": <call>, "decision": "deny",
+                                      "reason": "..."}}]}
 ```
 
-Deny is not an endpoint. It is a `functionResponse` saying the call was refused,
-posted to the `/content` route that already exists. The model gets to react and
-explain rather than the turn dying, and the refusal stays in the transcript.
+An earlier draft of this design gave approve an endpoint of its own and left
+deny as a `functionResponse` on `/content`. That asymmetry was arbitrary — both
+are the operator answering a question the conversation asked. One route means
+one authenticated path, and it inherits the transparent resume that route
+already has, so a conversation whose process is gone is rehydrated on the way
+in.
 
-**Approve and remember** is one column edit: drop the name from the skill's
-`gated_tools`. Note what it is *not* — it never widens `tools`, because the model
-could not have called something outside that list in the first place. A skill
-gains a tool only when an operator or the builder agent adds one.
+It also keeps a door open. Everything entering a conversation through one place
+is what makes a streaming transport — Phoenix channels over the same content
+path — a later addition rather than a rewrite.
+
+A companion read tells the UI what is waiting:
+
+```
+GET /api/v1/ai/conversation/:id/pending
+```
+
+Pending calls are derived from history rather than held in memory: a call with
+no answering response has not been decided. The model's `functionCall` is
+persisted before the loop continues, so this is durable by construction and
+still correct after a restart.
+
+### The decision is recorded; the block is not
+
+The approval block is consumed, never persisted as a part of the conversation.
+A new part type would be replayed into the model's context on every later turn,
+and the model would spend the rest of the conversation reading approval
+bookkeeping.
+
+Instead Echo authors the part that reaches the model — the tool's real result on
+approve, a refusal it can react to on deny — and records who decided what as
+**metadata on that row**. The audit trail sits on the row it produced, and the
+model's view of history stays clean.
+
+Two consequences are worth stating, because both are security properties rather
+than conveniences:
+
+- **The request carries only the call's identity, never its arguments.** Echo
+  re-reads the call from history and runs that, so an approval can never
+  execute something other than what the operator was shown.
+- **The approval UI shows placeholders, not values.** Arguments are persisted
+  before substitution (see [Variables and secrets](#variables-and-secrets)), so
+  a pending call reads `$.github_api_key` and structurally cannot display the
+  secret.
+
+### What parks a call
+
+The tool classifies a call; the skill decides whether that class stops.
+
+A tool answers one fixed question about a call — whether it mutates anything —
+next to the code that actually knows. `gated_tools` then says what to do with
+the answer:
+
+| Entry | Parks |
+|---|---|
+| `http_request` | every call to that tool |
+| `http_request:mutations` | only the calls it classifies as mutating |
+| *absent* | nothing; the tool runs unattended |
+
+"Reads flow, writes stop" is the middle row, and it is the useful setting for
+most skills — gating `http_request` outright would mean a click for every page
+fetch. The last row matters just as much: a scheduled skill that must write has
+to be able to, or Phases 8 and 9 deliver nothing.
+
+Splitting classification from policy is what keeps this configuration rather
+than a policy engine. The classification is fixed and closed; the row picks from
+a small set and never carries an expression.
+
+**Later, a tool will carry its own configuration on a skill** — an
+`http_request` restricted to named hosts, say — so a call inside those bounds is
+pre-authorised and one outside them parks. That is the same idea continued, and
+a skill feature in its own right. It is deliberately not in the phases below.
+
+### A gated call parks its whole turn
+
+If a turn asks for two calls and one of them is gated, neither runs.
+
+Answering some of a turn's calls and not others is a shape Gemini tolerates and
+OpenRouter rejects outright: an assistant message with two `tool_calls` followed
+by one `tool` message is invalid for OpenAI-compatible endpoints. Worse, it
+would fire a real side effect while waiting on a decision about its neighbour.
+
+Approval stays per call — the operator answers each one — and the turn resumes
+only once every pending call in it has an answer.
+
+### Approve and remember
+
+**Approve and remember** is one column edit: drop the entry from the skill's
+`gated_tools`. Note what it is *not* — it never widens `tools`, because the
+model could not have called something outside that list in the first place. A
+skill gains a tool only when an operator or the builder agent adds one.
 
 `remember` therefore has no meaning on a conversation with no skill behind it,
 which the plain agent chat is. There it is simply unavailable.
@@ -390,8 +453,8 @@ misconfiguration.
 The builder agent writes skills, and a skill's tool list is its blast radius —
 so the tool that edits that list is itself gated. `update_skill(skill, tools:
 [...])` comes back as a pending call with its arguments visible, an operator
-reads exactly which grant is being proposed, and `/approve` applies it. The
-agent proposes; it never grants.
+reads exactly which grant is being proposed, and approving it applies the
+change. The agent proposes; it never grants.
 
 This is deliberately *not* a separate mechanism. An earlier draft of this design
 reached for a changeset split — an agent-reachable changeset that cannot cast
@@ -422,14 +485,6 @@ variable *bindings*, and the difference is the point:
   fills a variable. Gating `bind_variable` would work mechanically, but "the
   agent never learns secret ids exist" is a stronger property than "the agent
   proposes and a human checks."
-
-**Partial answers: the backend allows them, the UI should not.** Posting one
-`functionResponse` for two pending calls is accepted, and the loop resumes with
-one still unanswered. Gemini pairs by name and position and will generally
-tolerate that; OpenRouter pairs by `tool_call_id`, and an assistant message with
-two `tool_calls` followed by one `tool` message is the shape OpenAI-compatible
-endpoints reject. So completeness is the approval UI's job, and on OpenRouter it
-is what keeps the turn valid rather than merely tidy.
 
 ## Variables and secrets
 
@@ -507,13 +562,24 @@ The arguments stored in `ai_messages` keep the placeholder. Only the in-memory
 map handed to `Echo.Agents.Tools.run/1` carries the real value, and it is never
 written back.
 
-**Results are scrubbed on the way in.** A tool can echo a secret back without
-meaning to — an error message quoting the failing URL, a redirect target, a
-response body reflecting a header. Before a `functionResponse` is persisted or
-shown to the model, the resolved values used in that call are replaced with
-their placeholders. This is a backstop, not a guarantee: a secret the tool
-transforms — base64-encoded, hashed, embedded in a longer token — will not
-match and will not be caught.
+**Sensitive results are scrubbed on the way in.** A tool can echo a secret back
+without meaning to — an error message quoting the failing URL, a redirect
+target, a response body reflecting a header. Before a `functionResponse` is
+persisted or shown to the model, the resolved values used in that round are
+replaced with their placeholders.
+
+Only values a resolver marks **sensitive**, though, and that distinction is
+load-bearing rather than fussy. Replacing every resolved value would corrupt
+results rather than protect anything: a `config` variable holding `"1"` would
+rewrite every `1` in every tool result, silently, and nothing downstream could
+tell. Phase 1's `config` and `input` variables are all `:plain`, so scrubbing is
+a tested no-op until Phase 6 produces something that is not.
+
+This is a backstop, not a guarantee: a secret the tool transforms —
+base64-encoded, hashed, embedded in a longer token, or cut in half by a
+response-size cap — will not match and will not be caught. It also does not
+cover *logs*, which are a different sink entirely; `http_request` strips the
+query string and userinfo from the URL before writing it.
 
 ### Declaring, validating, failing early
 
@@ -700,7 +766,7 @@ The two halves are deliberately different tools:
   preset's tool list and in no skill's, and is always gated — so it is the
   ordinary two-part server tool from [The approval gate](#the-approval-gate):
   the call comes back with the code as its argument, a human reads it, and
-  `/approve` makes Echo execute it. Because a skill's tool list can never
+  approving it makes Echo execute it. Because a skill's tool list can never
   contain it (see [Who may change a tool list](#who-may-change-a-tool-list)), a
   running skill cannot express "execute this code" at all.
 - **Each pinned block** is offered at run time as its own function declaration,
@@ -801,12 +867,12 @@ rather than a Phase 5 decision.
 
 ## Phases
 
-**Phase 1 — Skills as data.** `skills`, `skill_runs`, and `skill_variables`
-tables and contexts, CRUD API under `/api/v1/skills`, and
-`POST /api/v1/skills/:slug/run` returning `202 {run_id}`. A `Task.Supervisor`
-joins the supervision tree next to the conversation registry
-(`lib/echo/application.ex:31`). Deliverable: a hand-written skill row can be
-run, and its conversation read back at `/ai-messages`.
+**Phase 1 — Skills as data. Built.** `skills`, `skill_runs`, and
+`skill_variables` tables and contexts, CRUD API under `/api/v1/skills`, and
+`POST /api/v1/skills/:slug/run` returning `202` with the run. A
+`Task.Supervisor` joins the supervision tree next to the conversation registry.
+A hand-written skill row can be run, and its conversation read back at
+`/ai-messages`. See `docs/skills_api.md`.
 
 Variables are here rather than with secrets because a skill without parameters
 is barely a skill, and because building substitution and scrubbing once —
@@ -815,11 +881,32 @@ security-critical plumbing is written and tested *before* there is anything
 secret flowing through it. Phase 6 then adds the `secrets` table, the FK, and a
 resolver backend behind the interface Phase 1 already calls.
 
+**One thing this design did not anticipate: the pointer has to go the other
+way.** `skill_runs.session_id` names a run's conversation, but
+`ConversationServer` needs the reverse — which run's variables to resolve — and
+it cannot look that up. `ConversationManager.start_conversation/1` generates the
+session id itself and runs `init/1` synchronously inside that call, so
+`skill_runs.session_id` is still null when the first tool round executes; a
+reverse lookup would appear to work only after a resume. It must also name the
+**run**, not the skill, because `kind: input` values live on the run.
+
+So `ai_conversations` carries a nullable `variable_scope`, an opaque
+`"skill_run:<id>"` handed to whichever module answers
+`Echo.Agents.VariableResolver` — read from config, since `Echo.Skills` already
+calls `Echo.Agents` and naming it back would be a compile-time cycle. Null means
+no variables, which is every conversation predating this and every plain agent
+chat: no scope, no resolver call, no behaviour change.
+
+Substitution and scrubbing live in `Echo.Agents.Tools.run_all/2` rather than in
+the conversation's tool loop, so that Phase 2's approval path — which executes a
+tool outside that loop — inherits both instead of having to remember them.
+
 **Phase 2 — Gated tools.** A `gated_tools` column on `ai_conversations` and
-`skills`, subtracted from `backend_tools` in `ConversationServer.init/1`;
-pending-call derivation; the `/pending` and `/approve` endpoints; and the UI
-that shows a pending call and its arguments. Deny needs no new endpoint — it is
-a `functionResponse` on the `/content` route that already exists.
+`skills`; a tool's classification of its own calls, so `:mutations` means
+something; pending-call derivation and a `/pending` read; the approval block on
+the existing `/content` route; and the UI that shows a pending call and its
+arguments. No new write endpoint — approve and deny both arrive the way every
+other message does.
 
 Independent of skills: it applies to any conversation, including the existing
 agent chat, which can already call `http_request`. `remember` is the one part
