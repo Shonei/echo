@@ -132,8 +132,24 @@ defmodule EchoWeb.SkillUIControllerTest do
 
       # The prompt and its tools are filled in, so you see what you are starting.
       assert form =~ "turn a piece of repeatable work into a **skill**"
-      assert form =~ ~s(name="agent[tools][create_skill]")
-      assert form =~ "checked"
+
+      # Every tool the preset carries must arrive ticked, or pressing Create
+      # silently gives you a different agent than the preset says it is.
+      for name <- Echo.Agents.Presets.form_preset("skill_builder").tools do
+        field = String.replace(name, "openrouter:", "")
+
+        assert Regex.match?(
+                 ~r/name="agent\[tools\]\[#{Regex.escape(field)}\]"[^>]*checked/s,
+                 form
+               ),
+               "#{name} is in the preset but its checkbox is not ticked"
+      end
+    end
+
+    test "without a preset no tool is ticked", %{conn: conn} do
+      form = conn |> get(~p"/agent-chat/new") |> html_response(200)
+
+      refute Regex.match?(~r/name="agent\[tools\]\[[^\]]+\]"[^>]*checked/s, form)
     end
 
     test "without a preset the form starts empty", %{conn: conn} do

@@ -243,6 +243,7 @@
                 id="tool_google_search"
                 name="agent[tools][google_search]"
                 value="true"
+                checked={@preset && "google_search" in @preset.tools}
                 class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <div class="ml-2">
@@ -261,6 +262,7 @@
                 id="tool_url_context"
                 name="agent[tools][url_context]"
                 value="true"
+                checked={@preset && "url_context" in @preset.tools}
                 class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <div class="ml-2">
@@ -290,6 +292,7 @@
                   id="tool_web_search"
                   name="agent[tools][web_search]"
                   value="true"
+                  checked={@preset && "openrouter:web_search" in @preset.tools}
                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <div class="ml-2">
@@ -349,6 +352,7 @@
                   id="tool_web_fetch"
                   name="agent[tools][web_fetch]"
                   value="true"
+                  checked={@preset && "openrouter:web_fetch" in @preset.tools}
                   class="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 />
                 <div class="ml-2">
