@@ -50,6 +50,22 @@ defmodule Echo.Agents.ConversationVariablesTest do
     id
   end
 
+  # The registry drops an entry on the DOWN message, so a lookup straight after
+  # `GenServer.stop/2` can still hand back the dead pid -- and calling it exits.
+  defp wait_until_deregistered(id, attempts \\ 50) do
+    case Registry.lookup(Echo.Agents.ConversationRegistry, id) do
+      [] ->
+        :ok
+
+      _ when attempts > 0 ->
+        Process.sleep(5)
+        wait_until_deregistered(id, attempts - 1)
+
+      _ ->
+        flunk("conversation #{id} was never deregistered")
+    end
+  end
+
   defp response_row(id) do
     id |> Echo.Agent.list_messages_by_session() |> Enum.find(&(&1.type == "functionResponse"))
   end
@@ -123,6 +139,7 @@ defmodule Echo.Agents.ConversationVariablesTest do
 
     [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
     GenServer.stop(pid, :normal)
+    wait_until_deregistered(id)
 
     # The scope comes back from Postgres; the resolver is re-injected by
     # `start_child/1`, which is the path a resume takes too.
