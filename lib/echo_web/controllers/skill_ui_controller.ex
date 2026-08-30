@@ -1,8 +1,6 @@
 defmodule EchoWeb.SkillUIController do
   use EchoWeb, :controller
 
-  alias Echo.Agents.ConversationManager
-  alias Echo.Agents.Presets
   alias Echo.Agents.Providers
   alias Echo.Agents.Tools
   alias Echo.Skills
@@ -24,24 +22,6 @@ defmodule EchoWeb.SkillUIController do
       grantable: Echo.Skills.SkillTools.known_names(provider_module),
       gates: ~w(never mutations always)
     )
-  end
-
-  @doc """
-  Starts a conversation with the skill builder and hands it to the agent chat,
-  which already knows how to render one.
-  """
-  def builder(conn, _params) do
-    case ConversationManager.start_conversation(Presets.skill_builder()) do
-      {:ok, id} ->
-        redirect(conn, to: ~p"/agent-chat/#{id}")
-
-      {:error, reason} ->
-        Logger.error("Could not start the skill builder", reason: inspect(reason))
-
-        conn
-        |> put_flash(:error, "Could not start the builder.")
-        |> redirect(to: ~p"/skills")
-    end
   end
 
   def bind(conn, %{"id" => id, "name" => name} = params) do

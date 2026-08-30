@@ -2,14 +2,12 @@
   <div class="flex justify-between items-center mb-8">
     <h1 class="text-3xl font-bold text-gray-900">Skills</h1>
     <div class="flex items-center gap-4">
-      <.form for={%{}} action={~p"/skills/builder"} method="post">
-        <button
-          type="submit"
-          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-        >
-          Build one with the agent
-        </button>
-      </.form>
+      <a
+        href={~p"/agent-chat/new?preset=skill_builder"}
+        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+      >
+        Build one with the agent
+      </a>
       <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
         <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> Back to Home
       </a>

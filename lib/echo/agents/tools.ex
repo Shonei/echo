@@ -48,6 +48,12 @@ defmodule Echo.Agents.Tools do
   def skill_grantable_names, do: Enum.sort(names() -- @skill_management)
 
   @doc """
+  Names of the tools that manage skills. An operator's own conversation may have
+  these; a skill may not.
+  """
+  def skill_management_names, do: Enum.sort(@skill_management)
+
+  @doc """
   The module backing a name, or `nil`.
   """
   def backend(name), do: Map.get(@backends, name)

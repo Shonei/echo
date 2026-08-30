@@ -123,19 +123,32 @@ defmodule EchoWeb.SkillUIControllerTest do
     end
   end
 
-  describe "POST /skills/builder" do
-    test "starts a builder conversation and hands it to the agent chat", %{conn: conn} do
-      conn = post(conn, ~p"/skills/builder", %{})
+  describe "the builder hand-off" do
+    test "the skills page starts the builder through the agent form, pre-filled", %{conn: conn} do
+      html = conn |> get(~p"/skills") |> html_response(200)
+      assert html =~ "/agent-chat/new?preset=skill_builder"
 
-      assert path = redirected_to(conn)
-      assert path =~ "/agent-chat/"
+      form = conn |> get(~p"/agent-chat/new?preset=skill_builder") |> html_response(200)
 
-      session_id = path |> String.split("/") |> List.last()
-      record = Echo.Agent.get_conversation(session_id)
+      # The prompt and its tools are filled in, so you see what you are starting.
+      assert form =~ "turn a piece of repeatable work into a **skill**"
+      assert form =~ ~s(name="agent[tools][create_skill]")
+      assert form =~ "checked"
+    end
 
-      assert record.system_prompt =~ "turn a piece of repeatable work into a **skill**"
-      assert [%{"functionDeclarations" => declarations}] = record.tools
-      assert Enum.any?(declarations, &(&1["name"] == "create_skill"))
+    test "without a preset the form starts empty", %{conn: conn} do
+      form = conn |> get(~p"/agent-chat/new") |> html_response(200)
+
+      refute form =~ "turn a piece of repeatable work into a **skill**"
+      assert form =~ "Start from a preset"
+    end
+
+    test "the skill tools are rendered from the registry, not hardcoded", %{conn: conn} do
+      form = conn |> get(~p"/agent-chat/new") |> html_response(200)
+
+      for name <- Echo.Agents.Tools.skill_management_names() do
+        assert form =~ ~s(name="agent[tools][#{name}]"), "#{name} has no checkbox on the form"
+      end
     end
   end
 end

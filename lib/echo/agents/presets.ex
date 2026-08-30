@@ -256,8 +256,7 @@ defmodule Echo.Agents.Presets do
   """
   def skill_builder do
     %{
-      "system_prompt" =>
-        String.replace(@skill_builder_prompt, "{{tool_catalogue}}", tool_catalogue()),
+      "system_prompt" => skill_builder_prompt(),
       "temperature" => 0.3,
       "tools" =>
         @skill_builder_tools
@@ -265,6 +264,40 @@ defmodule Echo.Agents.Presets do
         |> List.wrap()
     }
   end
+
+  @doc """
+  The builder's system prompt, with the tool catalogue filled in.
+  """
+  def skill_builder_prompt,
+    do: String.replace(@skill_builder_prompt, "{{tool_catalogue}}", tool_catalogue())
+
+  @doc """
+  Presets the agent form can start from, as values it can pre-fill.
+
+  Same source as the conversation opts above, so a preset started from the form
+  and one started straight from a button are the same agent.
+  """
+  def form_presets do
+    [
+      %{
+        key: "skill_builder",
+        label: "Skill builder",
+        description:
+          "Writes and edits skills by talking to you. Cannot grant tools or set values.",
+        system_prompt: skill_builder_prompt(),
+        temperature: 0.3,
+        tools: @skill_builder_tools
+      }
+    ]
+  end
+
+  @doc """
+  One form preset by key, or `nil`.
+  """
+  def form_preset(key) when is_binary(key),
+    do: Enum.find(form_presets(), &(&1.key == key))
+
+  def form_preset(_key), do: nil
 
   # Rendered from the registry rather than written out, so it cannot describe a
   # tool that no longer exists or miss one that was added. The builder is told

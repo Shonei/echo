@@ -19,8 +19,8 @@ defmodule EchoWeb.AgentChatController do
     {"OpenRouter", "openrouter"}
   ]
 
-  def new(conn, _params) do
-    render_form(conn)
+  def new(conn, params) do
+    render_form(conn, Echo.Agents.Presets.form_preset(params["preset"]))
   end
 
   def create(conn, %{"agent" => agent_params}) do
@@ -42,14 +42,29 @@ defmodule EchoWeb.AgentChatController do
     end
   end
 
-  defp render_form(conn) do
+  defp render_form(conn, preset \\ nil) do
     render(
       conn,
       :new,
       models: @models,
       providers: @providers,
-      openrouter_models: openrouter_models()
+      openrouter_models: openrouter_models(),
+      presets: Echo.Agents.Presets.form_presets(),
+      preset: preset,
+      skill_tools: skill_tool_options()
     )
+  end
+
+  # Rendered from the registry rather than written into the template, so a tool
+  # added later cannot be missing a checkbox and therefore be impossible to
+  # enable.
+  defp skill_tool_options do
+    Enum.flat_map(Echo.Agents.Tools.skill_management_names(), fn name ->
+      case Echo.Agents.Tools.backend(name) do
+        nil -> []
+        module -> [%{name: name, description: module.declaration()["description"]}]
+      end
+    end)
   end
 
   # Fetched live rather than hardcoded: OpenRouter fronts hundreds of models and

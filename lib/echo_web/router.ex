@@ -105,7 +105,6 @@ defmodule EchoWeb.Router do
 
     get "/skills", SkillUIController, :index
     get "/skills/:id", SkillUIController, :show
-    post "/skills/builder", SkillUIController, :builder
     # Browsers cannot PUT from a form, so these are all POSTs -- the same
     # workaround the asset UI uses for delete.
     post "/skills/:id/variables/:name", SkillUIController, :bind
