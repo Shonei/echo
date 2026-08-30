@@ -71,7 +71,7 @@ defmodule Echo.Skills.RunnerTest do
       assert [%{"text" => "Fetch the releases."}] = prompt
     end
 
-    test "declared variables are described to the model; their values are not" do
+    test "a config value is shown, so the model can write it into its reply" do
       stub_reply("ok")
       skill = skill_fixture(instructions: "Report on the repo.")
       variable_fixture(skill, %{name: "repo_name", description: "which repo", value: "echo-srv"})
@@ -82,7 +82,36 @@ defmodule Echo.Skills.RunnerTest do
       prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
       assert prompt["text"] =~ "$.repo_name"
       assert prompt["text"] =~ "which repo"
-      refute prompt["text"] =~ "echo-srv"
+      assert prompt["text"] =~ "echo-srv"
+    end
+
+    test "a secret's value is never in the prompt, which is replayed every turn" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Call the API.")
+      variable_fixture(skill, %{name: "api_key", kind: "secret", value: "ghp_real"})
+      run = run_fixture(skill)
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      assert prompt["text"] =~ "$.api_key"
+      assert prompt["text"] =~ "Value withheld"
+      refute prompt["text"] =~ "ghp_real"
+
+      # Nor anywhere else in the request.
+      refute inspect(FakeHTTPClient.last_request().body) =~ "ghp_real"
+    end
+
+    test "the prompt says placeholders only work in tools Echo runs" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Search for it.")
+      variable_fixture(skill, %{name: "city", value: "London"})
+      run = run_fixture(skill)
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      assert prompt["text"] =~ "provider's own search or page fetch never sees one"
     end
 
     test "tools are rendered for the provider, not copied from the column" do
@@ -193,20 +222,42 @@ defmodule Echo.Skills.RunnerTest do
       refute text =~ "was-consumed"
     end
 
-    test "a skill variable's placeholder survives into the prompt untouched" do
+    test "a config placeholder in the body is filled in, so it cannot reach the reply" do
       stub_reply("ok")
-      skill = skill_fixture(instructions: "Report on $.repo_name.")
-      variable_fixture(skill, %{name: "repo_name", value: "echo-srv"})
+      skill = skill_fixture(instructions: "Briefing for $.city.")
+      variable_fixture(skill, %{name: "city", value: "London"})
       run = run_fixture(skill)
 
       Runner.execute(run.id)
 
       prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
-      # A variable resolves inside a tool call and nowhere else, so the value
-      # never reaches the system prompt -- which is stored once and replayed
-      # into every later request.
+      assert prompt["text"] =~ "Briefing for London."
+      refute prompt["text"] =~ "Briefing for $.city."
+    end
+
+    test "a secret's placeholder survives the body, because it resolves in a tool" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Authenticate with $.api_key.")
+      variable_fixture(skill, %{name: "api_key", kind: "secret", value: "ghp_real"})
+      run = run_fixture(skill)
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
+      assert prompt["text"] =~ "Authenticate with $.api_key."
+      refute prompt["text"] =~ "ghp_real"
+    end
+
+    test "an unset config variable leaves its placeholder rather than blanking it" do
+      stub_reply("ok")
+      skill = skill_fixture(instructions: "Report on $.repo_name.")
+      variable_fixture(skill, %{name: "repo_name"})
+      run = run_fixture(skill)
+
+      Runner.execute(run.id)
+
+      prompt = FakeHTTPClient.last_request().body["systemInstruction"]["parts"] |> hd()
       assert prompt["text"] =~ "Report on $.repo_name."
-      refute prompt["text"] =~ "echo-srv"
     end
 
     test "run input cannot write over a declared variable's placeholder" do

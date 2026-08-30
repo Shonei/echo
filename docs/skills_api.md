@@ -177,11 +177,22 @@ Three properties matter:
   shown to the model. A backstop, not a guarantee: a value the tool transforms
   — encoded, hashed, truncated — will not match and will not be caught.
 
-**A variable does not resolve in the instructions.** A skill body reading
-`"Report on $.repo_name"` reaches the model with the placeholder intact, and the
-model is told which variables exist but never their values. That is what keeps a
-secret out of the system prompt, which is stored once and replayed into every
-subsequent request for the life of the conversation.
+**A `config` placeholder is filled in everywhere; a `secret` only inside a
+tool.** A body reading `"Briefing for $.city"` reaches the model as
+`"Briefing for London"`, and the variables block below it lists the value too —
+so the model can put it in prose, or in a search query, without ever having to
+resolve it itself.
+
+A secret is different: `"Authenticate with $.api_key"` reaches the model with
+the placeholder intact, and the value is substituted only into the arguments of
+a tool Echo runs. The system prompt is stored once and replayed into every
+subsequent request, so a secret expanded there would be re-sent for the life of
+the conversation.
+
+**Placeholders only resolve in tools Echo runs itself.** A provider's own search
+or page fetch is invoked by the provider, so Echo never sees its arguments and
+cannot substitute anything into them. That is another reason config values are
+shown: the model has to pass the real value to those.
 
 Write `$$.name` for a literal `$.name` — jq and JSONPath use the same syntax.
 A conversation with no skill behind it (the plain agent chat) never substitutes

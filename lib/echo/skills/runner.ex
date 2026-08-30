@@ -162,14 +162,31 @@ defmodule Echo.Skills.Runner do
   run payload to write over a variable placeholder.
   """
   def system_prompt(%Skill{} = skill, input) when is_map(input) do
-    declared = MapSet.new(skill.variables || [], & &1.name)
+    variables = skill.variables || []
+    declared = MapSet.new(variables, & &1.name)
     usable = Map.reject(input, fn {key, _value} -> MapSet.member?(declared, key) end)
 
     body = skill.instructions || ""
     consumed = Enum.filter(AgentVariables.scan(body), &Map.has_key?(usable, &1))
-    rendered = AgentVariables.substitute(body, Map.take(usable, consumed))
+
+    rendered =
+      AgentVariables.substitute(
+        body,
+        Map.merge(config_values(variables), Map.take(usable, consumed))
+      )
 
     {rendered <> variables_block(skill), consumed}
+  end
+
+  # Config values are substituted into the body as well as listed below it. A
+  # placeholder left in prose is one the model will happily copy into its reply,
+  # which is how a briefing ends up addressed to `$.city`. Secrets are not in
+  # this map, so their placeholders survive and only ever resolve inside a tool.
+  defp config_values(variables) do
+    for %{kind: "config", name: name, value: value} <- variables,
+        not is_nil(value),
+        into: %{},
+        do: {name, value}
   end
 
   defp variables_block(%Skill{variables: variables}) when variables == [] or is_nil(variables),
@@ -181,22 +198,44 @@ defmodule Echo.Skills.Runner do
 
 
     <variables>
-    These values are available to this run. To use one, write its placeholder
-    exactly -- `$.name` -- as a tool argument; Echo substitutes the real value
-    immediately before the tool runs. You are not shown the values themselves,
-    and you never need them: never guess one, and never ask for one.
+    This run's values.
 
     #{Enum.map_join(skill.variables, "\n", &describe_variable/1)}
+
+    A `config` value is shown above, so use it directly wherever you write text.
+    A `secret` is not shown, and only ever reaches a tool: write `$.name` as a
+    tool argument and Echo substitutes the real value immediately before the
+    tool runs. Never write a secret's placeholder into your reply, and never
+    guess or ask for a value.
+
+    Placeholders are substituted only in the arguments of tools Echo runs
+    itself. A provider's own search or page fetch never sees one, so pass the
+    real value there.
     </variables>
     """
   end
 
-  defp describe_variable(variable) do
-    required = if variable.required, do: "required", else: "optional"
-
-    "- `$.#{variable.name}` (#{variable.type}, #{variable.kind}, #{required}): " <>
-      "#{variable.description}"
+  # A config value is shown because it is not sensitive and the model cannot
+  # write it into prose without knowing it -- which is how `$.city` ends up in a
+  # reply. A secret's value is withheld: the system prompt is stored once and
+  # replayed into every later request, so a secret expanded here would be sent
+  # for the life of the conversation.
+  defp describe_variable(%{kind: "secret"} = variable) do
+    "- `$.#{variable.name}` (secret#{required_note(variable)}) -- " <>
+      "#{describe(variable)}. Value withheld; use the placeholder in a tool argument."
   end
+
+  defp describe_variable(variable) do
+    "- `$.#{variable.name}` (#{variable.type}#{required_note(variable)}) = " <>
+      "#{inspect(variable.value)} -- #{describe(variable)}"
+  end
+
+  defp required_note(%{required: true}), do: ", required"
+  defp required_note(_variable), do: ""
+
+  defp describe(%{description: nil}), do: "no description given"
+  defp describe(%{description: ""}), do: "no description given"
+  defp describe(%{description: description}), do: description
 
   @doc """
   The first user message for a run.
