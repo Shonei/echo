@@ -224,9 +224,26 @@ defmodule Echo.Agents.Presets do
 
   {{tool_catalogue}}
 
-  Your own tools are separate: `list_skills` and `get_skill` read, the rest
-  write. Check a slug is free before creating.
+  Your own tools are separate from that list. Check a slug is free before
+  creating one.
   </tools>
+
+  <research>
+  `google_search` and `url_context` are for getting the details right: an API's
+  actual endpoint, a page's real shape, whether a service still works the way the
+  operator remembers. Use them before writing instructions that depend on a fact
+  you are unsure of. Say where something came from when you report it.
+  </research>
+
+  <testing>
+  `run_skill` runs one and waits, so write a skill, run it, read what came back,
+  and fix what was wrong before handing it over. That loop is worth more than
+  getting it right first time.
+
+  A run does real work with whatever tools the operator granted, so run a skill
+  to test it, not to get the operator's work done. If a run stops on a value
+  nobody has set, or a tool nobody has granted, say so and leave it with them.
+  </testing>
 
   <working>
   - Ask what the work actually is before writing anything. A skill built from a
@@ -245,7 +262,11 @@ defmodule Echo.Agents.Presets do
     "update_skill_instructions",
     "define_skill_variables",
     "list_skills",
-    "get_skill"
+    "get_skill",
+    "run_skill",
+    "get_skill_run",
+    "google_search",
+    "url_context"
   ]
 
   @doc """
@@ -258,10 +279,9 @@ defmodule Echo.Agents.Presets do
     %{
       "system_prompt" => skill_builder_prompt(),
       "temperature" => 0.3,
-      "tools" =>
-        @skill_builder_tools
-        |> Echo.Agents.Tools.declarations(Echo.Agents.Providers.Gemini)
-        |> List.wrap()
+      # Rendered through `SkillTools` because the list mixes Echo's own tools with
+      # Gemini's built-ins, and only it knows the shape of the latter.
+      "tools" => Echo.Skills.SkillTools.render(@skill_builder_tools, Echo.Agents.Providers.Gemini)
     }
   end
 

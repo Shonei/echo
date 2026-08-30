@@ -12,8 +12,10 @@ defmodule Echo.Agents.Tools do
   alias Echo.Agents.Tools.CreateSkill
   alias Echo.Agents.Tools.DefineSkillVariables
   alias Echo.Agents.Tools.GetSkill
+  alias Echo.Agents.Tools.GetSkillRun
   alias Echo.Agents.Tools.HttpRequest
   alias Echo.Agents.Tools.ListSkills
+  alias Echo.Agents.Tools.RunSkill
   alias Echo.Agents.Tools.UpdateSkill
   alias Echo.Agents.Tools.UpdateSkillInstructions
   alias Echo.Agents.Variables
@@ -27,7 +29,9 @@ defmodule Echo.Agents.Tools do
     "update_skill_instructions" => UpdateSkillInstructions,
     "define_skill_variables" => DefineSkillVariables,
     "list_skills" => ListSkills,
-    "get_skill" => GetSkill
+    "get_skill" => GetSkill,
+    "run_skill" => RunSkill,
+    "get_skill_run" => GetSkillRun
   }
 
   # Tools for managing skills. They belong to an agent an operator is talking to,
@@ -35,7 +39,8 @@ defmodule Echo.Agents.Tools do
   # from rewriting its own grants, and one that could read them has no business
   # doing so.
   @skill_management ~w(create_skill update_skill update_skill_instructions
-                       define_skill_variables list_skills get_skill)
+                       define_skill_variables list_skills get_skill
+                       run_skill get_skill_run)
 
   @doc """
   Names of every server-executed tool.

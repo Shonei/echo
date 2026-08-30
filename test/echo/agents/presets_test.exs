@@ -60,15 +60,32 @@ defmodule Echo.Agents.PresetsTest do
 
   describe "skill_builder/0" do
     test "declares the skill authoring tools, rendered for the provider" do
-      assert %{"tools" => [%{"functionDeclarations" => declarations}]} = Presets.skill_builder()
+      declarations =
+        Presets.skill_builder()["tools"] |> Enum.find_value(& &1["functionDeclarations"])
 
       assert Enum.map(declarations, & &1["name"]) |> Enum.sort() ==
-               ~w(create_skill define_skill_variables get_skill list_skills update_skill
-                  update_skill_instructions)
+               ~w(create_skill define_skill_variables get_skill get_skill_run list_skills
+                  run_skill update_skill update_skill_instructions)
+    end
+
+    test "carries Gemini's own search and fetch, so it can check a fact" do
+      tools = Presets.skill_builder()["tools"]
+
+      assert Enum.any?(tools, &Map.has_key?(&1, "google_search"))
+      assert Enum.any?(tools, &Map.has_key?(&1, "url_context"))
+    end
+
+    test "can run a skill, which is what makes build-and-test a loop" do
+      %{"tools" => tools} = Presets.skill_builder()
+      declarations = Enum.find_value(tools, & &1["functionDeclarations"])
+
+      assert Enum.any?(declarations, &(&1["name"] == "run_skill"))
+      assert Presets.skill_builder()["system_prompt"] =~ "not to get the operator's work done"
     end
 
     test "cannot grant tools or set a variable's value" do
-      %{"tools" => [%{"functionDeclarations" => declarations}]} = Presets.skill_builder()
+      declarations =
+        Presets.skill_builder()["tools"] |> Enum.find_value(& &1["functionDeclarations"])
 
       properties =
         declarations

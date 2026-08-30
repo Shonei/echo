@@ -273,7 +273,15 @@ any other conversation. In the browser, the **Build one with the agent** button
 on `/skills` does the same thing and drops you into the agent chat.
 
 It can create and rename skills, write their instructions, declare their
-variables, and search what already exists so it does not duplicate one.
+variables, and search what already exists so it does not duplicate one. It also
+carries Gemini's own search and page-fetch, so it can check an API's real shape
+before writing instructions that depend on it.
+
+**It can run a skill and wait for the result**, which is what makes authoring a
+loop rather than a guess: write it, run it, read what came back, fix it. A run
+started this way is an ordinary run — it does real work with whatever tools you
+granted, and shows up in the skill's run list like any other. The wait is capped
+at 90 seconds; past that the agent is told to check back with `get_skill_run`.
 
 **It is told which tools a skill could be granted, and given none of them.** The
 catalogue is rendered into its system prompt from the registry, so it cannot
