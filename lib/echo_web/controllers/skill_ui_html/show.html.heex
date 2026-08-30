@@ -7,9 +7,12 @@
         {@skill.slug} · {@skill.provider || "gemini"}{if @skill.model, do: " · #{@skill.model}"}
       </p>
     </div>
-    <a href={~p"/skills"} class="text-blue-600 hover:text-blue-800 flex items-center shrink-0">
-      <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> All skills
-    </a>
+    <div class="flex items-center gap-4 shrink-0">
+      <a href={~p"/skills"} class="text-blue-600 hover:text-blue-800 flex items-center">
+        <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> All skills
+      </a>
+      <a href="/" class="text-blue-600 hover:text-blue-800">Home</a>
+    </div>
   </div>
 
   <div class="bg-white rounded-xl shadow-md p-6 mb-6">
