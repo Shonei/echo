@@ -22,6 +22,10 @@ defmodule Echo.Agents.Tools do
 
   require Logger
 
+  # What a tool gets when the caller has no deadline of its own, so there is
+  # always a ceiling rather than a tool's own constant being the only limit.
+  @tool_ceiling_ms 120_000
+
   @backends %{
     "http_request" => HttpRequest,
     "create_skill" => CreateSkill,
@@ -144,6 +148,9 @@ defmodule Echo.Agents.Tools do
   end
 
   # Fails closed. Gates are validated on write, so anything else is a bad row.
+  defp remaining(nil), do: @tool_ceiling_ms
+  defp remaining(deadline), do: deadline - System.monotonic_time(:millisecond)
+
   defp gate(nil), do: :never
   defp gate("never"), do: :never
   defp gate("mutations"), do: :mutations
@@ -290,11 +297,12 @@ defmodule Echo.Agents.Tools do
   be answered — a deleted skill, a store that is down. That is not something the
   model can fix by rewriting its call.
   """
-  def run_all(calls, toolset, scope, resolver) when is_list(calls) do
+  def run_all(calls, toolset, scope, resolver, deadline \\ nil) when is_list(calls) do
     case prepare(calls, scope, resolver) do
       {:ok, prepared, used} ->
         used = Variables.merge(used)
-        {:ok, Enum.map(prepared, &(&1 |> answer(toolset) |> Variables.scrub(used)))}
+
+        {:ok, Enum.map(prepared, &(&1 |> answer(toolset, deadline) |> Variables.scrub(used)))}
 
       {:error, reason} ->
         {:error, reason}
@@ -318,17 +326,50 @@ defmodule Echo.Agents.Tools do
     end)
   end
 
-  defp answer({:run, %{"name" => name} = call}, toolset) do
-    response(call, execute(find(toolset, name), Map.get(call, "args") || %{}))
+  defp answer({:run, %{"name" => name} = call}, toolset, deadline) do
+    response(
+      call,
+      execute(find(toolset, name), Map.get(call, "args") || %{}, remaining(deadline))
+    )
   end
 
-  defp answer({:refuse, call, message}, _toolset),
+  defp answer({:refuse, call, message}, _toolset, _deadline),
     do: response(call, %{"error" => message})
 
-  defp execute(%Tool{executor: {:module, module}}, args), do: module.run(args)
+  # The caller bounds the tool rather than the tool bounding itself. A tool's own
+  # cap is a private constant, and nothing was checking those against the time
+  # the turn had left -- which is how a 90s wait could outlive the
+  # `GenServer.call` waiting on the whole turn.
+  #
+  # Calls in a round run in sequence, so each one is bounded by what is left when
+  # it starts and a slow first call squeezes the second.
+  defp execute(_tool, _args, remaining) when remaining <= 0 do
+    %{"error" => "This turn ran out of time before the tool could run."}
+  end
+
+  defp execute(%Tool{executor: {:module, module}} = tool, args, remaining) do
+    task = Task.async(fn -> module.run(args) end)
+
+    case Task.yield(task, remaining) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} ->
+        result
+
+      nil ->
+        Logger.warning("Tool ran out of time and was stopped",
+          tool: tool.name,
+          allowed_ms: remaining
+        )
+
+        %{
+          "error" =>
+            "This tool ran out of time and was stopped after #{div(remaining, 1000)}s. " <>
+              "Anything it had already started may still be running."
+        }
+    end
+  end
 
   # Unreachable: `partition_calls/2` only returns calls found in the toolset.
-  defp execute(other, _args) do
+  defp execute(other, _args, _remaining) do
     Logger.error("No way to execute tool", tool: inspect(other))
     %{"error" => "This tool is not executable."}
   end

@@ -5,8 +5,9 @@ defmodule Echo.Agents.Tools.RunSkill do
   alias Echo.Skills
 
   # A run happens in its own task, so this blocks the conversation waiting on it.
-  # Bounded for the same reason `HttpRequest` bounds a request: a turn carries a
-  # budget, and a tool that can outlast it takes the whole turn down.
+  # `Tools.run_all/5` caps that against the turn's remaining time; this is the
+  # shorter of the two, so the agent gets "check back later" rather than being
+  # cut off, whenever the turn has the time to spare.
   @wait_ms 90_000
   @poll_ms 500
 

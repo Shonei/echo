@@ -259,7 +259,13 @@ defmodule Echo.Agents.ConversationServer do
   # its stack, so `messages` and Postgres stay identical -- which
   # `replay_into_turns/1` depends on.
   defp run_tools(calls, messages, api_opts, convo, acc_parts, depth) do
-    case Echo.Agents.Tools.run_all(calls, convo.toolset, convo.variable_scope, convo.resolver) do
+    case Echo.Agents.Tools.run_all(
+           calls,
+           convo.toolset,
+           convo.variable_scope,
+           convo.resolver,
+           Keyword.get(api_opts, :deadline)
+         ) do
       {:ok, response_parts} ->
         case store_parts(convo.id, "user", response_parts, convo.model) do
           :ok ->

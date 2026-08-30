@@ -183,6 +183,82 @@ defmodule Echo.Agents.ToolsTest do
     end
   end
 
+  describe "run_all/5 bounds a tool by the turn's remaining time" do
+    defmodule SlowTool do
+      @behaviour Echo.Agents.ToolBackend
+
+      @impl true
+      def declaration, do: %{"name" => "slow", "parameters" => %{"type" => "object"}}
+
+      @impl true
+      def run(args) do
+        Process.sleep(args["ms"] || 5_000)
+        %{"finished" => true}
+      end
+
+      @impl true
+      def mutating?(_args), do: false
+    end
+
+    defp slow_toolset, do: [%Tool{name: "slow", executor: {:module, SlowTool}}]
+
+    defp slow_call(ms), do: %{"name" => "slow", "args" => %{"ms" => ms}}
+
+    defp deadline_in(ms), do: System.monotonic_time(:millisecond) + ms
+
+    test "a tool that outlasts the turn is stopped and answered, not left running" do
+      assert {:ok, [part]} =
+               Tools.run_all([slow_call(5_000)], slow_toolset(), nil, nil, deadline_in(80))
+
+      assert %{"functionResponse" => %{"response" => %{"error" => error}}} = part
+      assert error =~ "ran out of time"
+    end
+
+    test "the turn continues: the model gets a response rather than a crash" do
+      # This is the point of bounding it here. Before, the tool's own constant
+      # was the only limit, so a long one could outlive the caller waiting on
+      # the whole turn -- which exits the caller and tells the server nothing.
+      assert {:ok, parts} =
+               Tools.run_all([slow_call(5_000)], slow_toolset(), nil, nil, deadline_in(80))
+
+      assert length(parts) == 1
+    end
+
+    test "a tool that finishes in time is unaffected" do
+      assert {:ok, [%{"functionResponse" => %{"response" => %{"finished" => true}}}]} =
+               Tools.run_all([slow_call(1)], slow_toolset(), nil, nil, deadline_in(5_000))
+    end
+
+    test "calls in a round draw the budget down, so a slow one squeezes the next" do
+      started = System.monotonic_time(:millisecond)
+
+      assert {:ok, [first, second]} =
+               Tools.run_all(
+                 [slow_call(5_000), slow_call(5_000)],
+                 slow_toolset(),
+                 nil,
+                 nil,
+                 deadline_in(120)
+               )
+
+      elapsed = System.monotonic_time(:millisecond) - started
+
+      # Both are answered, and the pair costs about one budget rather than two.
+      assert %{"functionResponse" => %{"response" => %{"error" => _}}} = first
+      assert %{"functionResponse" => %{"response" => %{"error" => _}}} = second
+      assert elapsed < 1_000
+    end
+
+    test "with no deadline a tool is still capped rather than unbounded" do
+      # A caller with no deadline of its own -- a test, or a future direct
+      # caller -- must not be able to block forever on a tool's own constant.
+      assert {:ok, [%{"functionResponse" => %{"response" => response}}]} =
+               Tools.run_all([slow_call(1)], slow_toolset(), nil, nil)
+
+      assert response == %{"finished" => true}
+    end
+  end
+
   describe "HttpRequest.mutating?/1" do
     test "a read is not a mutation" do
       refute HttpRequest.mutating?(%{"url" => "https://x.dev"})
