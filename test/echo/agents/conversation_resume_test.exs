@@ -17,6 +17,41 @@ defmodule Echo.Agents.ConversationResumeTest do
     :ok
   end
 
+  describe "a conversation's toolset" do
+    test "is rebuilt from the row on resume, gates and all" do
+      preset = Echo.Agents.Presets.skill_builder()
+      {:ok, id} = ConversationManager.start_conversation(preset)
+
+      gates = fn ->
+        [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+        :sys.get_state(pid).toolset |> Map.new(&{&1.name, &1.gate})
+      end
+
+      before = gates.()
+      assert before["create_skill"] == :never
+
+      [{pid, _}] = Registry.lookup(Echo.Agents.ConversationRegistry, id)
+      GenServer.stop(pid, :normal)
+      wait_until_deregistered(id)
+
+      # The turn fails (no API key, see setup), but only after `init/1` has
+      # rebuilt the toolset from `ai_conversations.tool_config`. A gate held only
+      # in the preset would come back `:never` here, and a parked call would
+      # quietly start running after a redeploy.
+      assert ConversationManager.message(id, "still there?") == {:error, :missing_api_key}
+      assert gates.() == before
+    end
+
+    test "a preset's gates reach the durable row, not just the process" do
+      preset = Echo.Agents.Presets.skill_builder()
+      {:ok, id} = ConversationManager.start_conversation(preset)
+
+      record = Echo.Agent.get_conversation(id)
+      assert record.tool_config["create_skill"] == %{"gate" => "never"}
+      refute Map.has_key?(record.tool_config, "google_search")
+    end
+  end
+
   describe "resuming a conversation whose process is gone" do
     test "transparently rehydrates config and history from Postgres" do
       {:ok, id} = ConversationManager.start_conversation(%{"system_prompt" => "be nice"})
