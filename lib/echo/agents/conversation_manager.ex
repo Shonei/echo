@@ -9,10 +9,14 @@ defmodule Echo.Agents.Conversation do
             thinking_enabled: false,
             thinking_budget: nil,
             tools: nil,
-            backend_tools: [],
+            # Resolved once at `init/1` into `Echo.Agents.Tool` structs.
+            toolset: [],
             model: nil,
             response_modalities: nil,
             provider: nil,
+            variable_scope: nil,
+            # Who answers `$.name` for this conversation.
+            resolver: nil,
             messages: []
 end
 
@@ -46,7 +50,7 @@ defmodule Echo.Agents.ConversationManager do
 
       {:error, reason} ->
         require Logger
-        Logger.error("Failed to start conversation #{id}: #{inspect(reason)}")
+        Logger.error("Failed to start conversation", conversation_id: id, reason: inspect(reason))
         # Only reachable once the record was already created (a
         # `create_conversation/2` failure short-circuits the `with` before
         # this branch): don't leave a durable record behind for a
@@ -56,12 +60,20 @@ defmodule Echo.Agents.ConversationManager do
     end
   end
 
+  # Both `start_conversation/1` and the resume in `with_process/2` come through
+  # here, so an injected resolver survives a restart.
   defp start_child(id) do
     DynamicSupervisor.start_child(
       Echo.Agents.ConversationSupervisor,
-      {ConversationServer, %{id: id}}
+      {ConversationServer, %{id: id, resolver: resolver()}}
     )
   end
+
+  # Wired here so `Echo.Agents.Variables` reads no global state. A constant
+  # because there is one resolver; `Echo.Agents.VariableResolver` is the seam.
+  @resolver Echo.Skills.Variables
+
+  defp resolver, do: @resolver
 
   @doc """
   Sends a message to a conversation.

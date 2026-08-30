@@ -1,4 +1,6 @@
 defmodule Echo.Agents.Tools.HttpRequest do
+  @behaviour Echo.Agents.ToolBackend
+
   @moduledoc """
   A generic HTTP tool the model can call, executed here on the server.
 
@@ -30,6 +32,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
   own dialect via `Echo.Agents.Provider.build_function_tools/1` (Gemini wants
   the types upper-cased, OpenRouter takes them as they are).
   """
+  @impl true
   def declaration do
     %{
       "name" => "http_request",
@@ -70,6 +73,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
   `functionResponse`, including for failures — the model should see the error
   and be able to react to it rather than the turn blowing up.
   """
+  @impl true
   def run(args) when is_map(args) do
     url = args["url"]
     method = normalize_method(args["method"])
@@ -83,6 +87,28 @@ defmodule Echo.Agents.Tools.HttpRequest do
   end
 
   def run(_), do: %{"error" => "Invalid arguments: expected an object with a url."}
+
+  @doc """
+  Whether this call changes anything on the other end.
+
+  Method is the whole of it: a GET or a HEAD reads, and everything else Echo
+  allows can write. Nothing here decides what to *do* about that — the
+  conversation's tool config does, so the same classification serves a skill
+  that wants writes approved and one that runs them unattended.
+
+  A malformed call with no method defaults to GET in `run/1`, so it is read-like
+  here too.
+  """
+  @impl true
+  def mutating?(args) when is_map(args) do
+    case args["method"] do
+      nil -> false
+      method when is_binary(method) -> String.upcase(method) not in ~w(GET HEAD)
+      _ -> true
+    end
+  end
+
+  def mutating?(_args), do: false
 
   @doc """
   Checks a model-supplied URL. Returns `{:ok, url}` or `{:error, reason}`.
@@ -131,7 +157,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
 
         Logger.info("http_request tool completed",
           method: method,
-          url: url,
+          url: redact(url),
           status: status,
           duration_ms: duration_ms,
           response_bytes: byte_size(resp_body),
@@ -150,7 +176,7 @@ defmodule Echo.Agents.Tools.HttpRequest do
 
         Logger.warning("http_request tool failed",
           method: method,
-          url: url,
+          url: redact(url),
           duration_ms: duration_ms,
           error: inspect(exception)
         )
@@ -158,6 +184,19 @@ defmodule Echo.Agents.Tools.HttpRequest do
         %{"error" => "Request failed: #{Exception.message(exception)}"}
     end
   end
+
+  # A credential can be substituted into a query string, and the log is a sink
+  # the transcript scrubber never sees. Host and path are the useful part.
+  @doc false
+  def redact(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{} = uri -> URI.to_string(%{uri | query: nil, userinfo: nil})
+    end
+  rescue
+    _ -> "[unparseable url]"
+  end
+
+  def redact(url), do: inspect(url)
 
   defp truncate(body) when is_binary(body) do
     if byte_size(body) > @max_body_bytes do

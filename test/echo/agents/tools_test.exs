@@ -1,24 +1,25 @@
 defmodule Echo.Agents.ToolsTest do
   use ExUnit.Case, async: true
 
+  alias Echo.Agents.Tool
   alias Echo.Agents.Tools
   alias Echo.Agents.Tools.HttpRequest
 
-  describe "tool_config/2" do
+  describe "declarations/2" do
     test "wraps known tools as function declarations, defaulting to Gemini" do
       assert %{"functionDeclarations" => [%{"name" => "http_request"}]} =
-               Tools.tool_config(["http_request"])
+               Tools.declarations(["http_request"])
     end
 
     test "wraps the same tool in the chosen provider's syntax" do
       assert [%{"type" => "function", "function" => %{"name" => "http_request"}}] =
-               Tools.tool_config(["http_request"], Echo.Agents.Providers.OpenRouter)
+               Tools.declarations(["http_request"], Echo.Agents.Providers.OpenRouter)
     end
 
     test "ignores names it does not own" do
-      assert Tools.tool_config(["google_search"]) == nil
-      assert Tools.tool_config([]) == nil
-      assert Tools.tool_config([], Echo.Agents.Providers.OpenRouter) == nil
+      assert Tools.declarations(["google_search"]) == nil
+      assert Tools.declarations([]) == nil
+      assert Tools.declarations([], Echo.Agents.Providers.OpenRouter) == nil
     end
   end
 
@@ -34,8 +35,12 @@ defmodule Echo.Agents.ToolsTest do
   describe "enabled/1" do
     test "finds server-executed tools among the declared ones" do
       tools = [
-        %{"google_search" => %{}},
-        %{"functionDeclarations" => [%{"name" => "edit_text"}, %{"name" => "http_request"}]}
+        %{
+          "functionDeclarations" => [
+            %{"name" => "http_request"},
+            %{"name" => "edit_text"}
+          ]
+        }
       ]
 
       assert Tools.enabled(tools) == ["http_request"]
@@ -48,73 +53,148 @@ defmodule Echo.Agents.ToolsTest do
 
     test "reads OpenRouter's flat declaration shape too" do
       tools = [
-        %{"type" => "function", "function" => %{"name" => "edit_text"}},
-        %{"type" => "function", "function" => %{"name" => "http_request"}}
+        %{"type" => "function", "function" => %{"name" => "http_request"}},
+        %{"type" => "function", "function" => %{"name" => "edit_text"}}
       ]
 
       assert Tools.enabled(tools) == ["http_request"]
     end
 
     test "never picks up OpenRouter's own server-side tools" do
-      # They resolve inside OpenRouter with no client round-trip, so they must
-      # not enter Echo's tool loop -- they carry no "function" key to match on.
-      tools = [%{"type" => "openrouter:web_search"}, %{"type" => "openrouter:web_fetch"}]
-
-      assert Tools.enabled(tools) == []
+      assert Tools.enabled([%{"type" => "openrouter:web_search"}]) == []
     end
   end
 
-  describe "executable_calls/2" do
-    test "picks out calls this module can run" do
-      parts = [
-        %{"text" => "one moment"},
-        %{"functionCall" => %{"name" => "http_request", "args" => %{"url" => "https://x.dev"}}}
-      ]
+  describe "build/2" do
+    test "derives an ungated toolset from the declarations when there is no config" do
+      declared = [%{"functionDeclarations" => [%{"name" => "http_request"}]}]
 
-      assert [%{"name" => "http_request"}] = Tools.executable_calls(parts, ["http_request"])
+      assert [%Tool{name: "http_request", executor: {:module, HttpRequest}, gate: :never}] =
+               Tools.build(nil, declared)
+
+      # An empty map means the same thing, so a caller that sends `%{}` rather
+      # than omitting the column is not silently left with no tools.
+      assert Tools.build(%{}, declared) == Tools.build(nil, declared)
     end
 
-    test "leaves client-side tools alone" do
-      parts = [%{"functionCall" => %{"name" => "edit_text", "args" => %{}}}]
+    test "an explicit config is authoritative and carries per-tool settings" do
+      config = %{
+        "http_request" => %{"gate" => "mutations", "config" => %{"allowed_hosts" => ["a.dev"]}}
+      }
 
-      assert Tools.executable_calls(parts, ["http_request"]) == []
+      assert [tool] = Tools.build(config, [])
+      assert tool.gate == :mutations
+      assert tool.config == %{"allowed_hosts" => ["a.dev"]}
     end
 
-    test "refuses a call the conversation never declared" do
-      parts = [
-        %{"functionCall" => %{"name" => "http_request", "args" => %{"url" => "https://x.dev"}}}
-      ]
+    test "settings may be omitted entirely" do
+      assert [%Tool{gate: :never, config: %{}}] = Tools.build(%{"http_request" => %{}}, [])
+    end
 
-      assert Tools.executable_calls(parts, []) == []
+    test "drops a name with nothing to back it, rather than keeping a broken entry" do
+      # Keeping it would be worse than useless: an unresolvable tool behaves
+      # exactly like a client-side one, so the call would fall through to the
+      # caller and look identical to one waiting on a human.
+      assert Tools.build(%{"no_such_tool" => %{}}, []) == []
+    end
+
+    test "an unrecognised gate fails closed" do
+      assert [%Tool{gate: :always}] = Tools.build(%{"http_request" => %{"gate" => "yolo"}}, [])
     end
   end
 
-  describe "run/1" do
-    test "wraps a refusal as a functionResponse the model can react to" do
+  describe "partition_calls/2" do
+    defp toolset(gate),
+      do: [%Tool{name: "http_request", executor: {:module, HttpRequest}, gate: gate}]
+
+    defp call(args), do: %{"functionCall" => %{"name" => "http_request", "args" => args}}
+
+    test "runs everything when nothing is gated" do
+      assert {[%{"name" => "http_request"}], []} =
+               Tools.partition_calls([call(%{"url" => "https://x.dev"})], toolset(:never))
+    end
+
+    test "parks everything when a tool is always gated" do
+      assert {[], [%{"name" => "http_request"}]} =
+               Tools.partition_calls([call(%{"url" => "https://x.dev"})], toolset(:always))
+    end
+
+    test ":mutations asks the tool to classify the call" do
+      reads = call(%{"url" => "https://x.dev"})
+      writes = call(%{"url" => "https://x.dev", "method" => "POST"})
+
+      assert {[_], []} = Tools.partition_calls([reads], toolset(:mutations))
+      assert {[], [_]} = Tools.partition_calls([writes], toolset(:mutations))
+    end
+
+    test "one gated call parks its whole turn, siblings included" do
+      reads = call(%{"url" => "https://x.dev"})
+      writes = call(%{"url" => "https://x.dev", "method" => "DELETE"})
+
+      # Answering some of a turn's calls and not others is a shape OpenRouter
+      # rejects outright, and it would fire the read's side effect while waiting
+      # on a decision about its neighbour.
+      assert {[], parked} = Tools.partition_calls([reads, writes], toolset(:mutations))
+      assert length(parked) == 2
+    end
+
+    test "leaves client-side tools alone, in neither list" do
+      parts = [
+        %{"functionCall" => %{"name" => "edit_text", "args" => %{}}},
+        call(%{"url" => "https://x.dev"})
+      ]
+
+      assert {[%{"name" => "http_request"}], []} = Tools.partition_calls(parts, toolset(:never))
+    end
+
+    test "a call for a tool this conversation never got is not executable" do
+      assert Tools.executable_calls([call(%{"url" => "https://x.dev"})], []) == []
+    end
+  end
+
+  describe "run_all/4" do
+    setup do
+      {:ok, toolset: [%Tool{name: "http_request", executor: {:module, HttpRequest}}]}
+    end
+
+    test "wraps a refusal as a functionResponse the model can react to", %{toolset: toolset} do
       call = %{"name" => "http_request", "args" => %{"url" => "file:///etc/passwd"}}
 
-      assert %{
-               "functionResponse" => %{
-                 "name" => "http_request",
-                 "response" => %{"error" => error}
-               }
-             } =
-               Tools.run(call)
+      assert {:ok, [%{"functionResponse" => %{"response" => %{"error" => error}}}]} =
+               Tools.run_all([call], toolset, nil, nil)
 
       assert error =~ "http and https"
     end
 
-    test "carries a call's id onto the response, which OpenRouter pairs on" do
-      call = %{"name" => "http_request", "args" => %{"url" => "file:///etc/passwd"}, "id" => "c1"}
+    test "carries a call's id onto the response, which OpenRouter pairs on", %{toolset: toolset} do
+      call = %{"name" => "http_request", "args" => %{"url" => "file:///x"}, "id" => "c1"}
 
-      assert %{"functionResponse" => %{"id" => "c1", "name" => "http_request"}} = Tools.run(call)
+      assert {:ok, [%{"functionResponse" => %{"id" => "c1", "name" => "http_request"}}]} =
+               Tools.run_all([call], toolset, nil, nil)
     end
 
-    test "omits the id when the call had none, so Gemini payloads stay clean" do
-      call = %{"name" => "http_request", "args" => %{"url" => "file:///etc/passwd"}}
+    test "omits the id when the call had none, so Gemini payloads stay clean", %{
+      toolset: toolset
+    } do
+      call = %{"name" => "http_request", "args" => %{"url" => "file:///x"}}
 
-      assert %{"functionResponse" => response} = Tools.run(call)
+      assert {:ok, [%{"functionResponse" => response}]} = Tools.run_all([call], toolset, nil, nil)
       refute Map.has_key?(response, "id")
+    end
+  end
+
+  describe "HttpRequest.mutating?/1" do
+    test "a read is not a mutation" do
+      refute HttpRequest.mutating?(%{"url" => "https://x.dev"})
+      refute HttpRequest.mutating?(%{"url" => "https://x.dev", "method" => "get"})
+      refute HttpRequest.mutating?(%{"url" => "https://x.dev", "method" => "HEAD"})
+    end
+
+    test "anything that can write is" do
+      for method <- ~w(POST PUT PATCH DELETE post) do
+        assert HttpRequest.mutating?(%{"url" => "https://x.dev", "method" => method}),
+               "expected #{method} to classify as mutating"
+      end
     end
   end
 

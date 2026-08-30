@@ -1,0 +1,169 @@
+<div class="container mx-auto px-4 py-8 max-w-5xl">
+  <div class="flex justify-between items-start mb-8 gap-4">
+    <div>
+      <h1 class="text-3xl font-bold text-gray-900">{@skill.name}</h1>
+      <p class="text-sm text-gray-500 mt-1">{@skill.description}</p>
+      <p class="text-xs text-gray-400 mt-1 font-mono">
+        {@skill.slug} · {@skill.provider || "gemini"}{if @skill.model, do: " · #{@skill.model}"}
+      </p>
+    </div>
+    <a href={~p"/skills"} class="text-blue-600 hover:text-blue-800 flex items-center shrink-0">
+      <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> All skills
+    </a>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-1">Run it</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      Anything you write here fills <code class="font-mono">$.instructions</code>
+      in the body, or becomes the opening message if the body does not use it.
+    </p>
+    <.form for={%{}} action={~p"/skills/#{@skill.id}/run"} method="post" class="flex gap-3">
+      <input
+        type="text"
+        name="instructions"
+        placeholder="Optional instruction for this run"
+        class="flex-1 rounded-lg border-gray-300 text-sm"
+      />
+      <button
+        type="submit"
+        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium shrink-0"
+      >
+        Run
+      </button>
+    </.form>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-1">Instructions</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      Used verbatim as the system prompt. Written by the builder agent.
+    </p>
+    <pre class="bg-gray-50 rounded-lg p-4 text-sm text-gray-800 whitespace-pre-wrap font-mono overflow-x-auto">{@skill.instructions}</pre>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-1">Variables</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      The agent declares what a skill needs; you say what fills it. A secret's
+      value is never shown again once saved.
+    </p>
+
+    <p :if={@variables == []} class="text-sm text-gray-500">
+      None declared.
+    </p>
+
+    <div :for={variable <- @variables} class="border-t border-gray-100 py-4 first:border-t-0">
+      <.form
+        for={%{}}
+        action={~p"/skills/#{@skill.id}/variables/#{variable.name}"}
+        method="post"
+        class="flex items-end gap-3"
+      >
+        <div class="flex-1 min-w-0">
+          <label class="block text-sm font-medium text-gray-700">
+            <code class="font-mono">$.{variable.name}</code>
+            <span class="ml-2 text-xs font-normal text-gray-500">
+              {variable.kind} · {variable.type}{if variable.required, do: " · required"}
+            </span>
+            <span class={["ml-2 text-xs font-normal", elem(variable_state(variable), 1)]}>
+              {elem(variable_state(variable), 0)}
+            </span>
+          </label>
+          <p :if={variable.description} class="text-xs text-gray-500 mt-1">
+            {variable.description}
+          </p>
+          <input
+            type={if variable.kind == "secret", do: "password", else: "text"}
+            name="value"
+            value={if variable.kind == "secret", do: "", else: variable.value}
+            placeholder={
+              if variable.kind == "secret" and variable.value,
+                do: "saved — type to replace",
+                else: "value"
+            }
+            class="mt-2 w-full rounded-lg border-gray-300 text-sm font-mono"
+          />
+        </div>
+        <button
+          type="submit"
+          class="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 text-sm font-medium shrink-0"
+        >
+          Save
+        </button>
+      </.form>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-1">Tools</h2>
+    <p class="text-sm text-gray-500 mb-4">
+      What this skill may invoke. The builder agent cannot change this — a grant
+      is yours to make. A gate of <code class="font-mono">mutations</code>
+      stops writes for a decision and lets reads through.
+    </p>
+
+    <.form for={%{}} action={~p"/skills/#{@skill.id}/tools"} method="post">
+      <div :for={name <- @grantable} class="flex items-center gap-4 py-2">
+        <input
+          type="checkbox"
+          name={"tools[#{name}][granted]"}
+          value="true"
+          checked={Map.has_key?(@skill.tool_config || %{}, name)}
+          class="rounded border-gray-300"
+        />
+        <code class="font-mono text-sm text-gray-800 flex-1">{name}</code>
+        <select
+          name={"tools[#{name}][gate]"}
+          class="rounded-lg border-gray-300 text-sm py-1"
+        >
+          <option
+            :for={gate <- @gates}
+            value={gate}
+            selected={get_in(@skill.tool_config || %{}, [name, "gate"]) == gate}
+          >
+            {gate}
+          </option>
+        </select>
+      </div>
+
+      <button
+        type="submit"
+        class="mt-4 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 text-sm font-medium"
+      >
+        Save tools
+      </button>
+    </.form>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-md p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-4">Runs</h2>
+
+    <p :if={@runs == []} class="text-sm text-gray-500">Not run yet.</p>
+
+    <ul :if={@runs != []} role="list" class="divide-y divide-gray-100">
+      <li :for={run <- @runs} class="py-3 flex items-start justify-between gap-4">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-3">
+            <span class={[
+              "px-2 py-0.5 rounded-full text-xs font-medium",
+              status_class(run.status)
+            ]}>
+              {run.status}
+            </span>
+            <span class="text-xs text-gray-400">#{run.id} · {run.inserted_at}</span>
+          </div>
+          <p :if={run.result} class="text-sm text-gray-700 mt-1 line-clamp-2">{run.result}</p>
+          <p :if={run.error} class="text-sm text-red-600 mt-1">{run.error}</p>
+        </div>
+        <a
+          :if={run.session_id}
+          href={~p"/ai-messages/#{run.session_id}"}
+          class="text-sm text-blue-600 hover:text-blue-800 shrink-0"
+        >
+          Transcript
+        </a>
+      </li>
+    </ul>
+  </div>
+</div>

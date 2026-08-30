@@ -103,6 +103,15 @@ defmodule EchoWeb.Router do
     post "/agent-chat", AgentChatController, :create
     get "/agent-chat/:id", AgentChatController, :show
 
+    get "/skills", SkillUIController, :index
+    get "/skills/:id", SkillUIController, :show
+    post "/skills/builder", SkillUIController, :builder
+    # Browsers cannot PUT from a form, so these are all POSTs -- the same
+    # workaround the asset UI uses for delete.
+    post "/skills/:id/variables/:name", SkillUIController, :bind
+    post "/skills/:id/tools", SkillUIController, :grant
+    post "/skills/:id/run", SkillUIController, :run
+
     scope "/echo" do
       get "/request", UIController, :requests
       get "/request/:id", UIController, :request_detail
@@ -131,6 +140,20 @@ defmodule EchoWeb.Router do
       put "/blogs/:blog_id/content", BlogController, :update_content
       get "/blogs/:blog_id/revisions", RevisionController, :index
       get "/assets", AssetController, :index
+
+      # Skills. `:id` and `:skill_id` both take an id or a slug, so
+      # POST /api/v1/skills/weekly-report/run works. Never public: a run spends
+      # Gemini money, and instructions are internal config.
+      resources "/skills", SkillController, only: [:index, :show, :create, :update, :delete]
+      put "/skills/:skill_id/instructions", SkillController, :update_instructions
+      post "/skills/:skill_id/run", SkillController, :run
+
+      get "/skills/:skill_id/runs", SkillRunController, :index
+      get "/skills/:skill_id/runs/:id", SkillRunController, :show
+
+      get "/skills/:skill_id/variables", SkillVariableController, :index
+      put "/skills/:skill_id/variables", SkillVariableController, :define
+      put "/skills/:skill_id/variables/:name", SkillVariableController, :bind
     end
 
     scope "/ai" do
@@ -141,6 +164,7 @@ defmodule EchoWeb.Router do
       put "/conversation/:id/content", AIConversationController, :content
       post "/agents/editor", AIConversationController, :editor
       post "/agents/photographer", AIConversationController, :photographer
+      post "/agents/skill_builder", AIConversationController, :skill_builder
     end
   end
 

@@ -1,0 +1,52 @@
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Skills</h1>
+    <div class="flex items-center gap-4">
+      <.form for={%{}} action={~p"/skills/builder"} method="post">
+        <button
+          type="submit"
+          class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+        >
+          Build one with the agent
+        </button>
+      </.form>
+      <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
+        <.icon name="hero-arrow-left" class="w-4 h-4 mr-2" /> Back to Home
+      </a>
+    </div>
+  </div>
+
+  <div :if={@skills == []} class="bg-white rounded-xl shadow-md p-10 text-center text-gray-500">
+    No skills yet. Start the builder and describe the work you want repeated.
+  </div>
+
+  <div :if={@skills != []} class="bg-white rounded-xl shadow-md overflow-hidden">
+    <ul role="list" class="divide-y divide-gray-200">
+      <li :for={skill <- @skills} class="p-6 hover:bg-gray-50 transition-colors duration-150">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-3">
+              <a href={~p"/skills/#{skill.id}"} class="text-lg font-medium text-blue-600 truncate">
+                {skill.name}
+              </a>
+              <span
+                :if={!skill.enabled}
+                class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600"
+              >
+                disabled
+              </span>
+            </div>
+            <p class="text-sm text-gray-500 mt-1 truncate">{skill.description}</p>
+            <p class="text-xs text-gray-400 mt-1 font-mono">{skill.slug}</p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-xs text-gray-500">
+              {map_size(skill.tool_config || %{})} tool(s)
+            </p>
+            <p class="text-xs text-gray-400">{skill.provider || "gemini"}</p>
+          </div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</div>

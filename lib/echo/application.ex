@@ -30,6 +30,9 @@ defmodule Echo.Application do
           # AI Conversation Manager Processes (Dynamic)
           {Registry, keys: :unique, name: Echo.Agents.ConversationRegistry},
           {DynamicSupervisor, strategy: :one_for_one, name: Echo.Agents.ConversationSupervisor},
+          # Skill runs. Children are :temporary, so a crashing run is never
+          # retried. max_children surfaces as a 503 rather than unbounded load.
+          {Task.Supervisor, name: Echo.Skills.RunSupervisor, max_children: 25},
           # HTTP client
           {Finch, name: Echo.Finch},
           # Start to serve requests, typically the last entry
@@ -70,7 +73,7 @@ defmodule Echo.Application do
         [{Echo.AxiomLogger, Echo.AxiomConfig.logger_config()}]
       rescue
         error ->
-          Logger.error("Failed to setup Axiom logging: #{inspect(error)}")
+          Logger.error("Failed to setup Axiom logging", error: inspect(error))
           []
       end
     else

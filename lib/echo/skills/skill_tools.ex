@@ -1,0 +1,132 @@
+defmodule Echo.Skills.SkillTools do
+  @moduledoc """
+  Renders a skill's tool names into provider declarations.
+
+  Echo's own tools go through `Echo.Agents.Tools.declarations/2`, which renders
+  one canonical declaration into any provider's dialect. Built-ins cannot:
+  `google_search` and `openrouter:web_search` are different services, so each
+  provider's set is listed here.
+  """
+
+  alias Echo.Agents.Providers.Gemini
+  alias Echo.Agents.Providers.OpenRouter
+  alias Echo.Agents.Tools
+
+  # Gemini declares its own tools as empty objects; OpenRouter as typed server
+  # tools it resolves itself, whose results come back as `annotations` rather
+  # than as tool calls Echo runs.
+  @builtins %{
+    Gemini => %{
+      "google_search" => %{"google_search" => %{}},
+      "url_context" => %{"url_context" => %{}}
+    },
+    OpenRouter => %{
+      "openrouter:web_search" => %{"type" => "openrouter:web_search"},
+      "openrouter:web_fetch" => %{"type" => "openrouter:web_fetch"}
+    }
+  }
+
+  # Built-ins carry no declaration, so their descriptions live here. Echo's own
+  # tools describe themselves.
+  @builtin_descriptions %{
+    "google_search" => "Google Search, run by Gemini itself. Results come back as citations.",
+    "url_context" => "Lets Gemini fetch and read a URL the prompt mentions.",
+    "openrouter:web_search" =>
+      "Web search, run by OpenRouter itself. Results come back as annotations.",
+    "openrouter:web_fetch" => "Lets OpenRouter fetch and read a URL the prompt mentions."
+  }
+
+  @doc """
+  Every tool a skill can be granted, with what it does and which providers offer
+  it.
+
+  For describing the catalogue to an agent that advises on skills but cannot
+  grant anything itself.
+  """
+  def grantable_catalogue do
+    shared =
+      Enum.flat_map(Tools.skill_grantable_names(), fn name ->
+        case Tools.backend(name) do
+          nil ->
+            []
+
+          module ->
+            [%{name: name, description: module.declaration()["description"], providers: :all}]
+        end
+      end)
+
+    builtins =
+      for {provider_module, tools} <- @builtins,
+          name <- Map.keys(tools) do
+        %{
+          name: name,
+          description: Map.get(@builtin_descriptions, name, ""),
+          providers: [provider_name(provider_module)]
+        }
+      end
+
+    Enum.sort_by(shared ++ builtins, & &1.name)
+  end
+
+  defp provider_name(Gemini), do: "gemini"
+  defp provider_name(OpenRouter), do: "openrouter"
+
+  @doc """
+  Built-in tool names this provider offers.
+  """
+  def builtin_names(provider_module) do
+    @builtins |> Map.get(provider_module, %{}) |> Map.keys() |> Enum.sort()
+  end
+
+  @doc """
+  Every name a skill on this provider may declare.
+
+  The allow-list a skill's `tool_config` is validated against. Skill-writing
+  tools are excluded: a skill granted one could rewrite its own grants.
+  """
+  def known_names(provider_module),
+    do: Tools.skill_grantable_names() ++ builtin_names(provider_module)
+
+  @doc """
+  Renders a skill's `tool_config` into the `tools` conversation opt, or `nil`
+  when there are none.
+
+  `nil` rather than `[]` on purpose: an empty tools list is not the same as no
+  tools -- sending `"tools": []` to a model that cannot use tools at all makes
+  Gemini fail.
+
+  Only the names matter here. What each tool is *allowed* to do travels
+  separately, on the conversation's own `tool_config`, because it is Echo's
+  business and not the model's.
+  """
+  def render(tool_config, provider_module \\ Gemini)
+  def render(nil, _provider_module), do: nil
+  def render(tool_config, _provider_module) when tool_config == %{}, do: nil
+
+  def render(tool_config, provider_module) when is_map(tool_config),
+    do: render(Map.keys(tool_config), provider_module)
+
+  def render([], _provider_module), do: nil
+
+  def render(names, provider_module) when is_list(names) do
+    builtin_map = Map.get(@builtins, provider_module, %{})
+
+    builtins =
+      names
+      |> Enum.filter(&Map.has_key?(builtin_map, &1))
+      |> Enum.map(&Map.fetch!(builtin_map, &1))
+
+    # `tool_config/2` returns a map on Gemini, a list on OpenRouter, and nil
+    # when nothing matched. `List.wrap/1` flattens all three.
+    echo_tools =
+      names
+      |> Enum.filter(&(&1 in Tools.names()))
+      |> Tools.declarations(provider_module)
+      |> List.wrap()
+
+    case builtins ++ echo_tools do
+      [] -> nil
+      list -> list
+    end
+  end
+end

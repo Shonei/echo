@@ -205,7 +205,9 @@ defmodule Echo.Agent do
       "tools" => opt(opts, :tools, "tools"),
       "model" => opt(opts, :model, "model"),
       "response_modalities" => opt(opts, :response_modalities, "response_modalities"),
-      "provider" => opt(opts, :provider, "provider")
+      "provider" => opt(opts, :provider, "provider"),
+      "variable_scope" => opt(opts, :variable_scope, "variable_scope"),
+      "tool_config" => opt(opts, :tool_config, "tool_config")
     }
 
     Repo.transaction(fn ->
@@ -217,6 +219,29 @@ defmodule Echo.Agent do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  @doc """
+  Calls in a conversation's history that nothing has answered.
+
+  Derived rather than tracked, so it stays correct after a restart: the model's
+  `functionCall` is persisted before the tool loop continues, and an executed
+  call always produces exactly one `functionResponse`. Paired by position --
+  Gemini puts no id on a response, so two parallel calls to one tool cannot be
+  matched any other way.
+
+  A conversation with a client behind it will show pending calls in the ordinary
+  course of things (the blog editor answers `edit_text` itself). A skill run has
+  no client, so anything unanswered there is a call that stopped for a human.
+  """
+  def unanswered_calls(session_id) do
+    rows = list_messages_by_session(session_id)
+
+    responses = Enum.count(rows, &(&1.type == "functionResponse"))
+
+    rows
+    |> Enum.filter(&(&1.type == "functionCall"))
+    |> Enum.drop(responses)
   end
 
   @doc """

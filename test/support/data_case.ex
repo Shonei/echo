@@ -18,6 +18,7 @@ defmodule Echo.DataCase do
       import Ecto.Query
       import Echo.DataCase
       import Echo.ContentFixtures
+      import Echo.SkillsFixtures
     end
   end
 

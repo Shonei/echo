@@ -102,6 +102,10 @@ defmodule EchoWeb.AIConversationController do
     start_preset(conn, Presets.editor())
   end
 
+  def skill_builder(conn, _params) do
+    start_preset(conn, Presets.skill_builder())
+  end
+
   def photographer(conn, _params) do
     start_preset(conn, Presets.photographer())
   end

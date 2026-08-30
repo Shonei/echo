@@ -29,6 +29,13 @@ defmodule Echo.Agent.ConversationRecord do
     # Gemini exactly as before.
     field :provider, :string
 
+    # Opaque token (`"skill:12"`) handed to the variable resolver; nothing here
+    # parses it. Null means no variables.
+    field :variable_scope, :string
+
+    # What Echo may execute here, and how. Null derives it from `tools`.
+    field :tool_config, :map
+
     timestamps(type: :utc_datetime)
   end
 
@@ -45,7 +52,9 @@ defmodule Echo.Agent.ConversationRecord do
       :tools,
       :model,
       :response_modalities,
-      :provider
+      :provider,
+      :variable_scope,
+      :tool_config
     ])
     |> validate_required([:session_id])
   end
