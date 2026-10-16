@@ -10,7 +10,7 @@ defmodule Echo.UnoChess.Games.Event do
 
   alias Echo.UnoChess.Games.Game
 
-  @types ~w(card_drawn piece_moved piece_dropped move_undone turn_ended checkmate stalemate)
+  @types ~w(card_drawn piece_moved piece_dropped move_undone turn_ended checkmate stalemate forfeited)
 
   schema "uno_chess_events" do
     belongs_to :game, Game

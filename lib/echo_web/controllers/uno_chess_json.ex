@@ -129,6 +129,14 @@ defmodule EchoWeb.UnoChessJSON do
     %{type: "stalemate"}
   end
 
+  def render_domain_event({:forfeited, color, winner}) do
+    %{
+      type: "forfeited",
+      color: color_name(color),
+      winner: color_name(winner)
+    }
+  end
+
   defp render_stored_event(%Event{} = event) do
     %{
       sequence: event.sequence,

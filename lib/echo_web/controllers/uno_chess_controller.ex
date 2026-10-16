@@ -118,6 +118,10 @@ defmodule EchoWeb.UnoChessController do
     {:ok, {:end_turn, color}}
   end
 
+  def parse_command(color, %{"action" => "forfeit"}) do
+    {:ok, {:forfeit, color}}
+  end
+
   def parse_command(_color, _params) do
     {:error, :unknown_command}
   end

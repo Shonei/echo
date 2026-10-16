@@ -38,7 +38,7 @@ defmodule Echo.UnoChess.Games.Game do
       :winner
     ])
     |> validate_required([:room_code, :board, :deck, :white_token, :status])
-    |> validate_inclusion(:status, ~w(active checkmate stalemate))
+    |> validate_inclusion(:status, ~w(active checkmate stalemate forfeit))
     |> validate_inclusion(:winner, ~w(white black), allow_nil: true)
     |> validate_deck()
     |> unique_constraint(:room_code)
@@ -50,7 +50,7 @@ defmodule Echo.UnoChess.Games.Game do
     game
     |> cast(attrs, [:status, :winner])
     |> validate_required([:status])
-    |> validate_inclusion(:status, ~w(active checkmate stalemate))
+    |> validate_inclusion(:status, ~w(active checkmate stalemate forfeit))
     |> validate_inclusion(:winner, ~w(white black), allow_nil: true)
   end
 

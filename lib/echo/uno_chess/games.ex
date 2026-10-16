@@ -265,6 +265,10 @@ defmodule Echo.UnoChess.Games do
     {"stalemate", %{}}
   end
 
+  defp encode_event({:forfeited, color, winner}) do
+    {"forfeited", %{"color" => color_name(color), "winner" => color_name(winner)}}
+  end
+
   defp encode_captured(nil), do: nil
 
   defp encode_captured({color, kind}) do
@@ -300,6 +304,10 @@ defmodule Echo.UnoChess.Games do
 
   defp decode_event(%Event{type: "stalemate", payload: %{}}) do
     {:stalemate}
+  end
+
+  defp decode_event(%Event{type: "forfeited", payload: payload}) do
+    {:forfeited, color!(payload["color"]), color!(payload["winner"])}
   end
 
   defp decode_captured(nil), do: nil

@@ -64,6 +64,7 @@ defmodule Echo.UnoChess.Game do
     * `{:drop, color, :queen, "d4"}` — place one graveyard piece while holding a Restore card.
     * `{:undo, color}` — take back the latest sub-move or drop. One call undoes one action.
     * `{:end_turn, color}` — commit the staged board and pass the turn.
+    * `{:forfeit, color}` — concede the game to the opponent.
   """
   @type command ::
           {:draw, Board.color()}
@@ -71,6 +72,7 @@ defmodule Echo.UnoChess.Game do
           | {:drop, Board.color(), Board.kind(), String.t()}
           | {:undo, Board.color()}
           | {:end_turn, Board.color()}
+          | {:forfeit, Board.color()}
 
   @typedoc """
   A fact returned by a successful `apply/2`. The result is a list of these.
@@ -86,6 +88,7 @@ defmodule Echo.UnoChess.Game do
     * `{:turn_ended, color}` — that side's staged board is now the committed board.
     * `{:checkmate, winner}` — the commit mated the opponent.
     * `{:stalemate}` — the opponent has no legal move and an empty graveyard.
+    * `{:forfeited, color, winner}` — `color` conceded the game to `winner`.
   """
   @type event ::
           {:card_drawn, Board.color(), card()}
@@ -95,6 +98,7 @@ defmodule Echo.UnoChess.Game do
           | {:turn_ended, Board.color()}
           | {:checkmate, Board.color()}
           | {:stalemate}
+          | {:forfeited, Board.color(), Board.color()}
 
   @type t :: %__MODULE__{
           board: Board.t(),
@@ -106,7 +110,7 @@ defmodule Echo.UnoChess.Game do
           card: card() | nil,
           remaining: non_neg_integer(),
           history: [map()],
-          status: :active | :checkmate | :stalemate,
+          status: :active | :checkmate | :stalemate | :forfeit,
           winner: Board.color() | nil,
           rng: ([card()] -> [card()])
         }
@@ -188,6 +192,24 @@ defmodule Echo.UnoChess.Game do
   `Echo.UnoChess.Rules`). The charge is not spent.
   """
   @spec apply(t(), command()) :: {:ok, t(), [event()]} | {:error, atom()}
+  def apply(%__MODULE__{} = game, {:forfeit, color}) when color in [:white, :black] do
+    with :ok <- active(game) do
+      winner = Rules.opposite(color)
+
+      next = %{
+        game
+        | status: :forfeit,
+          winner: winner,
+          turn: nil,
+          card: nil,
+          remaining: 0,
+          history: []
+      }
+
+      {:ok, next, [{:forfeited, color, winner}]}
+    end
+  end
+
   def apply(%__MODULE__{} = game, command) do
     with :ok <- known(command),
          :ok <- active(game),
@@ -413,6 +435,7 @@ defmodule Echo.UnoChess.Game do
 
   defp command_for({:move_undone, color, _left}), do: {:ok, {:undo, color}}
   defp command_for({:turn_ended, color}), do: {:ok, {:end_turn, color}}
+  defp command_for({:forfeited, color, _winner}), do: {:ok, {:forfeit, color}}
   defp command_for(event), do: {:error, {:unexpected_event, event}}
 
   defp consume([], events), do: {:ok, events}

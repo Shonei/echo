@@ -230,4 +230,37 @@ defmodule EchoWeb.UnoChessControllerTest do
              }
            } = json_response(end_black, 200)
   end
+
+  test "POST /api/v1/uno-chess/games/:room_code/play with forfeit ends the game and awards victory to opponent",
+       %{conn: conn} do
+    {:ok, game} = Games.create_game(room_code: unique("room"), deck: ["1"])
+    {:ok, black_token} = Games.claim_black(game)
+    white_conn = put_req_header(conn, "authorization", "Bearer " <> game.white_token)
+    black_conn = put_req_header(conn, "authorization", "Bearer " <> black_token)
+
+    res =
+      post(black_conn, ~p"/api/v1/uno-chess/games/#{game.room_code}/play", %{
+        "action" => "forfeit"
+      })
+
+    assert %{
+             "data" => %{
+               "game" => %{
+                 "status" => "forfeit",
+                 "winner" => "white",
+                 "turn" => nil
+               },
+               "events" => [
+                 %{"type" => "forfeited", "color" => "black", "winner" => "white"}
+               ]
+             }
+           } = json_response(res, 200)
+
+    after_over =
+      post(white_conn, ~p"/api/v1/uno-chess/games/#{game.room_code}/play", %{
+        "action" => "draw"
+      })
+
+    assert %{"errors" => %{"detail" => "game_over"}} = json_response(after_over, 422)
+  end
 end
