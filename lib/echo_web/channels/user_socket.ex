@@ -8,6 +8,7 @@ defmodule EchoWeb.UserSocket do
 
   ## Channels
   channel "chat:*", EchoWeb.ChatChannel
+  channel "uno_chess:*", EchoWeb.UnoChessChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After

@@ -150,7 +150,7 @@ defmodule Echo.UnoChess.Board do
             end
           end
 
-        label = rank + 1 |> Integer.to_string() |> String.pad_leading(label_width)
+        label = (rank + 1) |> Integer.to_string() |> String.pad_leading(label_width)
         "#{label} #{Enum.join(cells, " ")}"
       end
 

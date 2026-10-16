@@ -40,7 +40,7 @@ defmodule Echo.UnoChess.Games do
 
   Returns `{:error, :seat_taken}` when black already has a token.
   """
-  def claim_black(%Game{id: id}) do
+  def claim_black(%Game{id: id} = game) do
     token = token()
 
     Game
@@ -49,9 +49,33 @@ defmodule Echo.UnoChess.Games do
       set: [black_token: token, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)]
     )
     |> case do
-      {1, _} -> {:ok, token}
-      {0, _} -> {:error, :seat_taken}
+      {1, _} ->
+        broadcast(%{game | black_token: token}, [])
+        {:ok, token}
+
+      {0, _} ->
+        {:error, :seat_taken}
     end
+  end
+
+  @doc """
+  Returns `:white` or `:black` when `token` matches that seat on `game`, or `nil`.
+  """
+  def seat(%Game{} = game, token) when is_binary(token) do
+    cond do
+      token_match?(game.white_token, token) -> :white
+      token_match?(game.black_token, token) -> :black
+      true -> nil
+    end
+  end
+
+  def seat(%Game{}, _token), do: nil
+
+  @doc """
+  Subscribes the calling process to real-time updates for `room_code`.
+  """
+  def subscribe(room_code) when is_binary(room_code) do
+    Phoenix.PubSub.subscribe(Echo.PubSub, topic(room_code))
   end
 
   def get_game!(id), do: Repo.get!(Game, id)
@@ -64,12 +88,16 @@ defmodule Echo.UnoChess.Games do
   Replays the stored log into an `Echo.UnoChess.Game` struct.
   """
   def restore_game(%Game{} = game) do
-    events = game.id |> list_events() |> Enum.map(&decode_event/1)
-    Engine.restore(game.board, game.deck, events)
+    restore_game(game, list_events(game.id))
   end
 
   def restore_game(id) when is_integer(id) do
     id |> get_game!() |> restore_game()
+  end
+
+  def restore_game(%Game{} = game, events) when is_list(events) do
+    decoded = Enum.map(events, &decode_event/1)
+    Engine.restore(game.board, game.deck, decoded)
   end
 
   def list_events(game_id) do
@@ -87,8 +115,12 @@ defmodule Echo.UnoChess.Games do
   """
   def play(%Game{id: id}, command) do
     case Repo.transaction(fn -> play_locked(id, command) end) do
-      {:ok, {game, events}} -> {:ok, game, events}
-      {:error, reason} -> {:error, reason}
+      {:ok, {game, events}} ->
+        broadcast(game, events)
+        {:ok, game, events}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -179,6 +211,19 @@ defmodule Echo.UnoChess.Games do
   end
 
   defp token, do: Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
+
+  defp token_match?(stored, given)
+       when is_binary(stored) and is_binary(given) and byte_size(stored) == byte_size(given) do
+    Plug.Crypto.secure_compare(stored, given)
+  end
+
+  defp token_match?(_stored, _given), do: false
+
+  defp broadcast(%Game{room_code: room_code} = game, events) do
+    Phoenix.PubSub.broadcast(Echo.PubSub, topic(room_code), {:uno_chess_updated, game, events})
+  end
+
+  defp topic(room_code), do: "uno_chess:room:" <> room_code
 
   defp encode_event({:card_drawn, color, card}) do
     {"card_drawn", %{"color" => color_name(color), "card" => hd(Deck.encode([card]))}}
