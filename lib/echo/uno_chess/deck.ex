@@ -15,11 +15,11 @@ defmodule Echo.UnoChess.Deck do
   @type card :: {:move, 1 | 2 | 3} | {:restore, 2 | 4} | :reverse
 
   @counts [
-    {{:move, 1}, 15},
-    {{:move, 2}, 24},
-    {{:move, 3}, 5},
-    {{:restore, 2}, 10},
-    {{:restore, 4}, 5},
+    {{:move, 1}, 20},
+    {{:move, 2}, 27},
+    {{:move, 3}, 6},
+    {{:restore, 2}, 4},
+    {{:restore, 4}, 2},
     {:reverse, 5}
   ]
 

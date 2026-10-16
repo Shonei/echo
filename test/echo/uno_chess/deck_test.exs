@@ -9,11 +9,11 @@ defmodule Echo.UnoChess.DeckTest do
     assert length(deck) == 64
 
     assert Enum.frequencies(deck) == %{
-             {:move, 1} => 15,
-             {:move, 2} => 24,
-             {:move, 3} => 5,
-             {:restore, 2} => 10,
-             {:restore, 4} => 5,
+             {:move, 1} => 20,
+             {:move, 2} => 27,
+             {:move, 3} => 6,
+             {:restore, 2} => 4,
+             {:restore, 4} => 2,
              :reverse => 5
            }
   end
@@ -22,11 +22,11 @@ defmodule Echo.UnoChess.DeckTest do
     deck = Deck.standard()
 
     assert Deck.encode(deck) |> Enum.frequencies() == %{
-             "1" => 15,
-             "2" => 24,
-             "3" => 5,
-             "T" => 10,
-             "F" => 5,
+             "1" => 20,
+             "2" => 27,
+             "3" => 6,
+             "T" => 4,
+             "F" => 2,
              "R" => 5
            }
 
