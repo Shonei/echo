@@ -11,8 +11,12 @@ config :echo, EchoWeb.Endpoint,
     "https://apps.shonei.me",
     "https://shonei.dev",
     "https://apps.shonei.dev",
+    "https://chess.shonei.dev",
     "//apps.shonei.me",
-    "//shonei.dev"
+    "//shonei.dev",
+    "//chess.shonei.dev",
+    "//*.shonei.dev",
+    "//*.shonei.me"
   ]
 
 # Do not print debug messages in production

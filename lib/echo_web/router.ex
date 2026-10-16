@@ -128,6 +128,13 @@ defmodule EchoWeb.Router do
 
     post "/login", LoginController, :create
 
+    scope "/uno-chess" do
+      post "/games", UnoChessController, :create
+      get "/games/:room_code", UnoChessController, :show
+      post "/games/:room_code/join", UnoChessController, :join
+      post "/games/:room_code/play", UnoChessController, :play
+    end
+
     scope "/" do
       pipe_through :api_maybe_auth
       resources "/blogs", BlogController, only: [:index, :show]
